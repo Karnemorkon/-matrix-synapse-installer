@@ -233,7 +233,7 @@ create_security_documentation() {
 ## Рекомендації з безпеки
 
 ### 1. Регулярні оновлення
-```bash
+\`\`\`bash
 # Оновлення системи
 sudo apt update && sudo apt upgrade -y
 
