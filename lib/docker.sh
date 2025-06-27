@@ -24,16 +24,22 @@ install_docker_dependencies() {
     if ! systemctl is-active --quiet docker; then
         log_info "Встановлення Docker Engine..."
         
-        # Add Docker GPG key
-        install -m 0755 -d /etc/apt/keyrings
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-        chmod a+r /etc/apt/keyrings/docker.gpg
-        
-        # Add Docker repository
-        echo \
-            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-            $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-            tee /etc/apt/sources.list.d/docker.list > /dev/null
+        # Detect OS
+        if [[ -f /etc/debian_version ]]; then
+            # Debian/Ubuntu
+            install -m 0755 -d /etc/apt/keyrings
+            curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            chmod a+r /etc/apt/keyrings/docker.gpg
+            
+            # Add Docker repository
+            echo \
+                "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+                $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+                tee /etc/apt/sources.list.d/docker.list > /dev/null
+        else
+            log_error "Непідтримувана операційна система"
+            exit 1
+        fi
         
         # Install Docker packages
         apt update -y &>> "${LOG_FILE}"
@@ -250,6 +256,7 @@ start_matrix_services() {
     done
     
     log_error "Matrix Synapse не запустився після ${max_attempts} спроб"
+    log_info "Перевірте логи: docker compose logs synapse"
     exit 1
 }
 

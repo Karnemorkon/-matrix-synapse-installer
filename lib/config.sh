@@ -31,6 +31,9 @@ load_config() {
 }
 
 save_config() {
+    # Ensure config directory exists
+    mkdir -p "${CONFIG_DIR}"
+    
     cat > "${CONFIG_FILE}" << EOF
 # Matrix Synapse Installer Configuration
 # Generated on $(date)
@@ -53,6 +56,9 @@ EOF
 interactive_config() {
     log_step "Інтерактивна конфігурація"
     
+    # Initialize config first
+    init_config
+    
     # Domain configuration
     read -p "Введіть ваш домен для Matrix [${DEFAULT_DOMAIN}]: " DOMAIN
     DOMAIN=${DOMAIN:-$DEFAULT_DOMAIN}
@@ -65,6 +71,10 @@ interactive_config() {
     while true; do
         read -sp "Створіть пароль для бази даних PostgreSQL: " POSTGRES_PASSWORD
         echo
+        if [[ -z "${POSTGRES_PASSWORD}" ]]; then
+            echo "Пароль не може бути порожнім. Спробуйте ще раз."
+            continue
+        fi
         read -sp "Повторіть пароль: " POSTGRES_PASSWORD_CONFIRM
         echo
         [[ "$POSTGRES_PASSWORD" == "$POSTGRES_PASSWORD_CONFIRM" ]] && break
@@ -93,7 +103,14 @@ interactive_config() {
     USE_CLOUDFLARE_TUNNEL=$(ask_yes_no "Використовувати Cloudflare Tunnel для доступу?" "false")
     
     if [[ "${USE_CLOUDFLARE_TUNNEL}" == "true" ]]; then
-        read -p "Введіть токен Cloudflare Tunnel: " CLOUDFLARE_TUNNEL_TOKEN
+        while true; do
+            read -p "Введіть токен Cloudflare Tunnel: " CLOUDFLARE_TUNNEL_TOKEN
+            if [[ -n "${CLOUDFLARE_TUNNEL_TOKEN}" ]]; then
+                break
+            else
+                echo "Токен не може бути порожнім. Спробуйте ще раз."
+            fi
+        done
     fi
     
     save_config
@@ -117,6 +134,12 @@ validate_config() {
     # Validate password
     if [[ -z "${POSTGRES_PASSWORD}" ]]; then
         log_error "Пароль бази даних не може бути порожнім"
+        exit 1
+    fi
+    
+    # Validate Cloudflare token if needed
+    if [[ "${USE_CLOUDFLARE_TUNNEL}" == "true" && -z "${CLOUDFLARE_TUNNEL_TOKEN}" ]]; then
+        log_error "Cloudflare Tunnel токен не може бути порожнім"
         exit 1
     fi
     

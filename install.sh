@@ -152,7 +152,10 @@ $(get_service_urls)
 
 📚 ДОКУМЕНТАЦІЯ:
    ${BASE_DIR}/docs/README.md
-   ${BASE_DIR}/docs/TROUBLESHOOTING.md
+
+👤 СТВОРЕННЯ ПЕРШОГО КОРИСТУВАЧА:
+   cd ${BASE_DIR}
+   ./bin/matrix-control.sh user create admin
 
 ✅ Система готова до використання!
 EOF
