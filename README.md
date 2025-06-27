@@ -49,17 +49,17 @@
 
 ### 1. Завантаження
 
-\`\`\`bash
+```bash
 git clone https://github.com/your-username/matrix-synapse-installer.git
 cd matrix-synapse-installer
 chmod +x install.sh
-\`\`\`
+```
 
 ### 2. Запуск встановлення
 
-\`\`\`bash
+```bash
 sudo ./install.sh
-\`\`\`
+```
 
 ### 3. Слідування майстру встановлення
 
@@ -75,7 +75,7 @@ sudo ./install.sh
 
 ### Основні команди
 
-\`\`\`bash
+```bash
 # Статус системи
 ./bin/matrix-control.sh status
 
@@ -96,17 +96,17 @@ sudo ./install.sh
 
 # Перевірка здоров'я
 ./bin/matrix-control.sh health
-\`\`\`
+```
 
 ### Управління користувачами
 
-\`\`\`bash
+```bash
 # Створити користувача
 ./bin/matrix-control.sh user create admin
 
 # Список користувачів
 ./bin/matrix-control.sh user list
-\`\`\`
+```
 
 ## 📊 Доступ до сервісів
 
@@ -128,7 +128,7 @@ sudo ./install.sh
 
 ### Рекомендації
 
-\`\`\`bash
+```bash
 # Регулярні оновлення
 sudo apt update && sudo apt upgrade -y
 ./bin/matrix-control.sh update
@@ -138,13 +138,13 @@ sudo apt update && sudo apt upgrade -y
 
 # Перевірка безпеки
 ./bin/matrix-control.sh health
-\`\`\`
+```
 
 ## 💾 Резервне копіювання
 
 ### Автоматичні бекапи
 
-\`\`\`bash
+```bash
 # Перевірити статус cron
 crontab -l
 
@@ -153,13 +153,13 @@ crontab -l
 
 # Перегляд логів бекапу
 tail -f /DATA/matrix-backups/backup.log
-\`\`\`
+```
 
 ## 🔧 Усунення проблем
 
 ### Діагностика
 
-\`\`\`bash
+```bash
 # Загальна перевірка здоров'я
 ./bin/matrix-control.sh health
 
@@ -169,19 +169,19 @@ tail -f /DATA/matrix-backups/backup.log
 # Логи конкретного сервісу
 ./bin/matrix-control.sh logs synapse
 ./bin/matrix-control.sh logs postgres
-\`\`\`
+```
 
 ### Типові проблеми
 
 #### Synapse не запускається
 
-\`\`\`bash
+```bash
 # Перевірити логи
 ./bin/matrix-control.sh logs synapse
 
 # Перезапустити
 ./bin/matrix-control.sh restart
-\`\`\`
+```
 
 ## 🤝 Підтримка
 
