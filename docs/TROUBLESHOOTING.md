@@ -4,7 +4,7 @@
 
 ### Перевірка здоров'я системи
 
-\`\`\`bash
+```bash
 # Загальна перевірка
 ./bin/matrix-control.sh health
 
@@ -13,11 +13,11 @@
 
 # Використання ресурсів
 docker stats --no-stream
-\`\`\`
+```
 
 ### Перевірка логів
 
-\`\`\`bash
+```bash
 # Логи всіх сервісів
 ./bin/matrix-control.sh logs
 
@@ -29,7 +29,7 @@ docker stats --no-stream
 # Логи з фільтрацією
 ./bin/matrix-control.sh logs synapse | grep -i error
 ./bin/matrix-control.sh logs synapse | grep -i warning
-\`\`\`
+```
 
 ## 🚨 Типові проблеми
 
@@ -41,7 +41,7 @@ docker stats --no-stream
 - Недоступність API на порту 8008
 
 #### Діагностика:
-\`\`\`bash
+```bash
 # Перевірити логи Synapse
 ./bin/matrix-control.sh logs synapse
 
@@ -52,10 +52,10 @@ docker compose exec synapse python -m synapse.config.homeserver --config-path /d
 # Перевірити права доступу
 ls -la synapse/config/
 ls -la synapse/data/
-\`\`\`
+```
 
 #### Рішення:
-\`\`\`bash
+```bash
 # Виправити права доступу
 sudo chown -R 991:991 /DATA/matrix/synapse/
 
@@ -64,7 +64,7 @@ grep -A 5 "database:" /DATA/matrix/synapse/config/homeserver.yaml
 
 # Перезапустити сервіс
 ./bin/matrix-control.sh restart
-\`\`\`
+```
 
 ### 2. Проблеми з базою даних PostgreSQL
 
@@ -74,7 +74,7 @@ grep -A 5 "database:" /DATA/matrix/synapse/config/homeserver.yaml
 - Повільна робота системи
 
 #### Діагностика:
-\`\`\`bash
+```bash
 # Перевірити статус PostgreSQL
 ./bin/matrix-control.sh logs postgres
 
@@ -84,10 +84,10 @@ docker compose exec postgres pg_isready -U matrix_user
 
 # Перевірити розмір бази
 docker compose exec postgres psql -U matrix_user -d matrix_db -c "\l+"
-\`\`\`
+```
 
 #### Рішення:
-\`\`\`bash
+```bash
 # Перезапустити PostgreSQL
 docker compose restart postgres
 
@@ -96,7 +96,7 @@ docker compose exec postgres psql -U matrix_user -d matrix_db -c "VACUUM FULL;"
 
 # Перевірити дисковий простір
 df -h /DATA/matrix/postgres/
-\`\`\`
+```
 
 ### 3. Проблеми з мостами
 
@@ -106,7 +106,7 @@ df -h /DATA/matrix/postgres/
 - Помилки автентифікації
 
 #### Діагностика:
-\`\`\`bash
+```bash
 # Перевірити логи мостів
 ./bin/matrix-control.sh logs signal-bridge
 ./bin/matrix-control.sh logs whatsapp-bridge
@@ -116,10 +116,10 @@ ls -la /DATA/matrix/*/config/registration.yaml
 
 # Перевірити конфігурацію в homeserver.yaml
 grep -A 10 "app_service_config_files:" /DATA/matrix/synapse/config/homeserver.yaml
-\`\`\`
+```
 
 #### Рішення:
-\`\`\`bash
+```bash
 # Перегенерувати реєстраційні файли
 cd /DATA/matrix
 docker compose exec synapse generate_registration \
@@ -133,7 +133,7 @@ docker compose restart signal-bridge whatsapp-bridge
 
 # Перезапустити Synapse
 docker compose restart synapse
-\`\`\`
+```
 
 ### 4. Проблеми з SSL/HTTPS
 
@@ -143,7 +143,7 @@ docker compose restart synapse
 - Федерація не працює
 
 #### Діагностика:
-\`\`\`bash
+```bash
 # Перевірити статус сертифікатів
 sudo certbot certificates
 
@@ -152,10 +152,10 @@ sudo nginx -t
 
 # Перевірити логи Nginx
 sudo tail -f /var/log/nginx/error.log
-\`\`\`
+```
 
 #### Рішення:
-\`\`\`bash
+```bash
 # Оновити сертифікати
 sudo certbot renew
 
@@ -164,7 +164,7 @@ sudo systemctl restart nginx
 
 # Перевірити автоматичне оновлення
 sudo certbot renew --dry-run
-\`\`\`
+```
 
 ### 5. Проблеми з продуктивністю
 
@@ -174,7 +174,7 @@ sudo certbot renew --dry-run
 - Тайм-аути запитів
 
 #### Діагностика:
-\`\`\`bash
+```bash
 # Перевірити використання ресурсів
 docker stats --no-stream
 
@@ -186,10 +186,10 @@ free -h
 
 # Перевірити активні з'єднання
 docker compose exec postgres psql -U matrix_user -d matrix_db -c "SELECT count(*) FROM pg_stat_activity;"
-\`\`\`
+```
 
 #### Рішення:
-\`\`\`bash
+```bash
 # Очистити кеш Synapse
 docker compose exec synapse python -m synapse.app.admin_cmd -c /data/homeserver.yaml purge_history
 
@@ -198,13 +198,13 @@ docker compose exec postgres psql -U matrix_user -d matrix_db -c "VACUUM ANALYZE
 
 # Перезапустити сервіси
 ./bin/matrix-control.sh restart
-\`\`\`
+```
 
 ## 🔧 Інструменти діагностики
 
 ### Корисні команди Docker
 
-\`\`\`bash
+```bash
 # Перевірити використання дискового простору Docker
 docker system df
 
@@ -216,11 +216,11 @@ docker logs matrix-synapse-1 --tail 100
 
 # Увійти в контейнер для діагностики
 docker compose exec synapse bash
-\`\`\`
+```
 
 ### Перевірка мережі
 
-\`\`\`bash
+```bash
 # Перевірити відкриті порти
 netstat -tuln | grep -E "(8008|8448|80|443)"
 
@@ -229,11 +229,11 @@ curl -I http://localhost:8008/_matrix/client/versions
 
 # Перевірити федерацію
 curl -I https://your-domain.com/_matrix/federation/v1/version
-\`\`\`
+```
 
 ### Моніторинг в реальному часі
 
-\`\`\`bash
+```bash
 # Моніторинг логів в реальному часі
 ./bin/matrix-control.sh logs synapse | grep -E "(ERROR|WARN)"
 
@@ -242,13 +242,13 @@ watch -n 5 'docker stats --no-stream'
 
 # Моніторинг дискового простору
 watch -n 10 'df -h /DATA/matrix'
-\`\`\`
+```
 
 ## 🆘 Екстрені процедури
 
 ### Повне відновлення системи
 
-\`\`\`bash
+```bash
 # 1. Зупинити всі сервіси
 ./bin/matrix-control.sh stop
 
@@ -260,11 +260,11 @@ watch -n 10 'df -h /DATA/matrix'
 
 # 4. Запустити сервіси
 ./bin/matrix-control.sh start
-\`\`\`
+```
 
 ### Скидання паролів
 
-\`\`\`bash
+```bash
 # Скинути пароль користувача Matrix
 cd /DATA/matrix
 docker compose exec synapse register_new_matrix_user \
@@ -276,11 +276,11 @@ docker compose exec synapse register_new_matrix_user \
 
 # Скинути пароль Grafana
 docker compose exec grafana grafana-cli admin reset-admin-password new_password
-\`\`\`
+```
 
 ### Очищення даних
 
-\`\`\`bash
+```bash
 # Очистити старі медіа файли (старші 30 днів)
 docker compose exec synapse python -m synapse.app.admin_cmd \
   -c /data/homeserver.yaml \
@@ -289,13 +289,13 @@ docker compose exec synapse python -m synapse.app.admin_cmd \
 
 # Очистити старі логи
 find /DATA/matrix/logs -name "*.log" -mtime +7 -delete
-\`\`\`
+```
 
 ## 📞 Отримання допомоги
 
 ### Збір інформації для звернення
 
-\`\`\`bash
+```bash
 # Створити звіт про систему
 {
   echo "=== System Info ==="
@@ -314,7 +314,7 @@ find /DATA/matrix/logs -name "*.log" -mtime +7 -delete
   echo "=== Recent Logs ==="
   ./bin/matrix-control.sh logs synapse --tail 50
 } > matrix-debug-report.txt
-\`\`\`
+```
 
 ### Контакти для підтримки
 
