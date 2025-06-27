@@ -24,7 +24,6 @@ docker stats --no-stream
 # Логи конкретного сервісу
 ./bin/matrix-control.sh logs synapse
 ./bin/matrix-control.sh logs postgres
-./bin/matrix-control.sh logs element
 
 # Логи з фільтрацією
 ./bin/matrix-control.sh logs synapse | grep -i error
@@ -45,22 +44,15 @@ docker stats --no-stream
 # Перевірити логи Synapse
 ./bin/matrix-control.sh logs synapse
 
-# Перевірити конфігурацію
-cd /DATA/matrix
-docker compose exec synapse python -m synapse.config.homeserver --config-path /data/homeserver.yaml
-
 # Перевірити права доступу
-ls -la synapse/config/
-ls -la synapse/data/
+ls -la /DATA/matrix/synapse/config/
+ls -la /DATA/matrix/synapse/data/
 \`\`\`
 
 #### Рішення:
 \`\`\`bash
 # Виправити права доступу
 sudo chown -R 991:991 /DATA/matrix/synapse/
-
-# Перевірити конфігурацію бази даних
-grep -A 5 "database:" /DATA/matrix/synapse/config/homeserver.yaml
 
 # Перезапустити сервіс
 ./bin/matrix-control.sh restart
@@ -81,9 +73,6 @@ grep -A 5 "database:" /DATA/matrix/synapse/config/homeserver.yaml
 # Перевірити підключення
 cd /DATA/matrix
 docker compose exec postgres pg_isready -U matrix_user
-
-# Перевірити розмір бази
-docker compose exec postgres psql -U matrix_user -d matrix_db -c "\l+"
 \`\`\`
 
 #### Рішення:
@@ -91,11 +80,8 @@ docker compose exec postgres psql -U matrix_user -d matrix_db -c "\l+"
 # Перезапустити PostgreSQL
 docker compose restart postgres
 
-# Очистити логи PostgreSQL
-docker compose exec postgres psql -U matrix_user -d matrix_db -c "VACUUM FULL;"
-
 # Перевірити дисковий простір
-df -h /DATA/matrix/postgres/
+df -h /DATA/matrix/
 \`\`\`
 
 ### 3. Проблеми з мостами
@@ -252,13 +238,10 @@ watch -n 10 'df -h /DATA/matrix'
 # 1. Зупинити всі сервіси
 ./bin/matrix-control.sh stop
 
-# 2. Відновити з останнього бекапу
-./bin/matrix-control.sh restore latest-backup.tar.gz
+# 2. Відновити з останнього бекапу (якщо доступний)
+# Розпакувати бекап та відновити файли
 
-# 3. Перевірити цілісність
-./bin/matrix-control.sh health
-
-# 4. Запустити сервіси
+# 3. Запустити сервіси
 ./bin/matrix-control.sh start
 \`\`\`
 
@@ -273,9 +256,6 @@ docker compose exec synapse register_new_matrix_user \
   -p new_password \
   --no-admin \
   http://localhost:8008
-
-# Скинути пароль Grafana
-docker compose exec grafana grafana-cli admin reset-admin-password new_password
 \`\`\`
 
 ### Очищення даних
@@ -319,11 +299,10 @@ find /DATA/matrix/logs -name "*.log" -mtime +7 -delete
 ### Контакти для підтримки
 
 - **GitHub Issues**: Створіть issue з debug звітом
-- **Matrix кімната**: `#matrix-installer:matrix.org`
-- **Email**: support@your-domain.com
+- **Документація**: Перевірте README.md
 
 ### Корисні посилання
 
 - [Matrix Troubleshooting Guide](https://matrix.org/docs/guides/troubleshooting)
-- [Synapse Admin API](https://matrix-org.github.io/synapse/latest/admin_api/)
+- [Synapse Documentation](https://matrix-org.github.io/synapse/)
 - [Docker Troubleshooting](https://docs.docker.com/config/troubleshooting/)

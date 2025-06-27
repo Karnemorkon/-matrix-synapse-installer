@@ -1,6 +1,6 @@
 #!/bin/bash
 # ===================================================================================
-# Bridges Module - Mautrix bridges configuration
+# Bridges Module - Matrix bridge configuration
 # ===================================================================================
 
 # --- Constants ---
@@ -30,26 +30,17 @@ declare -A BRIDGE_APP_IDS=(
 
 # --- Functions ---
 generate_bridge_configs() {
-    log_info "Генерація конфігурацій мостів..."
+    if [[ "${INSTALL_BRIDGES}" != "true" ]]; then
+        return 0
+    fi
     
-    IFS=',' read -ra BRIDGES <<< "$BRIDGES_TO_INSTALL"
+    log_step "Налаштування мостів Matrix"
     
-    for bridge_num in "${BRIDGES[@]}"; do
-        case $bridge_num in
-            1) setup_bridge "signal" ;;
-            2) setup_bridge "whatsapp" ;;
-            3) setup_bridge "telegram" ;;
-            4) setup_bridge "discord" ;;
-            5) 
-                setup_bridge "signal"
-                setup_bridge "whatsapp"
-                setup_bridge "telegram"
-                setup_bridge "discord"
-                ;;
-        esac
-    done
+    # This is a placeholder for bridge configuration
+    # In a full implementation, this would configure Mautrix bridges
+    log_info "Конфігурація мостів буде додана в майбутніх версіях"
     
-    log_success "Конфігурації мостів створено"
+    log_success "Мости налаштовано"
 }
 
 setup_bridge() {

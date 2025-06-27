@@ -10,107 +10,88 @@ readonly BACKUP_LOG="$BACKUP_BASE_DIR/backup.log"
 
 # --- Functions ---
 setup_backup_system() {
-    log_info "Налаштування системи резервного копіювання..."
+    if [[ "${SETUP_BACKUP}" != "true" ]]; then
+        return 0
+    fi
     
-    # Create backup directory
-    mkdir -p "$BACKUP_BASE_DIR"
+    log_step "Налаштування системи резервного копіювання"
+    
+    local backup_dir="/DATA/matrix-backups"
+    mkdir -p "${backup_dir}"
     
     # Create backup script
-    create_backup_script
-    
-    # Create restore script
-    create_restore_script
+    create_backup_script "${backup_dir}"
     
     # Setup cron job
-    setup_backup_cron
-    
-    # Create initial backup
-    if ask_yes_no "Створити початкове резервне копіювання?"; then
-        run_backup
-    fi
+    setup_backup_cron "${backup_dir}"
     
     log_success "Систему резервного копіювання налаштовано"
 }
 
 create_backup_script() {
-    local backup_script="$BACKUP_BASE_DIR/backup-matrix.sh"
+    local backup_dir="$1"
     
-    cat > "$backup_script" << 'EOF'
+    log_info "Створення скрипта резервного копіювання..."
+    
+    cat > "${backup_dir}/backup-matrix.sh" << EOF
 #!/bin/bash
-# Matrix Synapse Backup Script
+# Matrix Backup Script
 
-set -euo pipefail
+BACKUP_DIR="${backup_dir}"
+MATRIX_DIR="${BASE_DIR}"
+DATE=\$(date +%Y-%m-%d_%H-%M-%S)
+BACKUP_NAME="matrix-backup-\$DATE"
+BACKUP_PATH="\$BACKUP_DIR/\$BACKUP_NAME"
 
-# Configuration
-BACKUP_DIR="/DATA/matrix-backups"
-BASE_DIR="/DATA/matrix"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_NAME="matrix-backup-$TIMESTAMP"
-BACKUP_FILE="$BACKUP_DIR/$BACKUP_NAME.tar.gz"
-LOG_FILE="$BACKUP_DIR/backup.log"
+# Create backup directory
+mkdir -p "\$BACKUP_PATH"
 
-# Logging function
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
-}
+# Log start
+echo "\$(date): Початок резервного копіювання Matrix" >> "\$BACKUP_DIR/backup.log"
 
-# Main backup function
-main() {
-    log "Starting backup: $BACKUP_NAME"
-    
-    # Create temporary directory
-    TEMP_DIR=$(mktemp -d)
-    trap "rm -rf $TEMP_DIR" EXIT
-    
-    # Stop services for consistent backup
-    log "Stopping Matrix services..."
-    cd "$BASE_DIR"
-    docker-compose stop synapse element synapse-admin
-    
-    # Backup database
-    log "Backing up PostgreSQL database..."
-    docker-compose exec -T postgres pg_dump -U matrix_user matrix_db > "$TEMP_DIR/database.sql"
-    
-    # Backup configuration and data
-    log "Backing up files..."
-    cp -r "$BASE_DIR/synapse" "$TEMP_DIR/"
-    cp -r "$BASE_DIR/element" "$TEMP_DIR/"
-    cp "$BASE_DIR/docker-compose.yml" "$TEMP_DIR/"
-    cp "$BASE_DIR/.env" "$TEMP_DIR/"
-    
-    # Create compressed archive
-    log "Creating compressed archive..."
-    tar -czf "$BACKUP_FILE" -C "$TEMP_DIR" .
-    
-    # Restart services
-    log "Restarting Matrix services..."
-    docker-compose start synapse element synapse-admin
-    
-    # Cleanup old backups
-    cleanup_old_backups
-    
-    # Verify backup
-    if [[ -f "$BACKUP_FILE" ]]; then
-        BACKUP_SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
-        log "Backup completed successfully: $BACKUP_FILE ($BACKUP_SIZE)"
-    else
-        log "ERROR: Backup failed - file not created"
-        exit 1
-    fi
-}
+# Stop services for consistent backup
+cd "\$MATRIX_DIR"
+docker compose stop
 
-# Cleanup old backups
-cleanup_old_backups() {
-    log "Cleaning up old backups (older than 30 days)..."
-    find "$BACKUP_DIR" -name "matrix-backup-*.tar.gz" -mtime +30 -delete
-}
+# Backup configurations
+cp -r "\$MATRIX_DIR/synapse/config" "\$BACKUP_PATH/"
+cp -r "\$MATRIX_DIR/synapse/data" "\$BACKUP_PATH/" 2>/dev/null || true
 
-# Run main function
-main "$@"
+# Backup docker-compose and env files
+cp "\$MATRIX_DIR/docker-compose.yml" "\$BACKUP_PATH/" 2>/dev/null || true
+cp "\$MATRIX_DIR/.env" "\$BACKUP_PATH/" 2>/dev/null || true
+
+# Backup database
+docker compose start postgres
+sleep 10
+docker compose exec -T postgres pg_dump -U matrix_user matrix_db > "\$BACKUP_PATH/database.sql"
+
+# Restart services
+docker compose up -d
+
+# Create archive
+cd "\$BACKUP_DIR"
+tar -czf "\$BACKUP_NAME.tar.gz" "\$BACKUP_NAME"
+rm -rf "\$BACKUP_NAME"
+
+# Clean old backups (keep last 7)
+find "\$BACKUP_DIR" -name "matrix-backup-*.tar.gz" -type f -mtime +7 -delete
+
+echo "\$(date): Резервне копіювання завершено: \$BACKUP_NAME.tar.gz" >> "\$BACKUP_DIR/backup.log"
 EOF
+    
+    chmod +x "${backup_dir}/backup-matrix.sh"
+}
 
-    chmod +x "$backup_script"
-    log_success "Скрипт резервного копіювання створено: $backup_script"
+setup_backup_cron() {
+    local backup_dir="$1"
+    
+    log_info "Налаштування автоматичного резервного копіювання..."
+    
+    # Add cron job for daily backup at 2 AM
+    (crontab -l 2>/dev/null; echo "0 2 * * * ${backup_dir}/backup-matrix.sh") | crontab -
+    
+    log_success "Автоматичне резервне копіювання налаштовано (щодня о 2:00)"
 }
 
 create_restore_script() {
@@ -205,18 +186,6 @@ EOF
     log_success "Скрипт відновлення створено: $restore_script"
 }
 
-setup_backup_cron() {
-    log_info "Налаштування cron завдання для автоматичного бекапу..."
-    
-    # Create cron job for daily backup at 2 AM
-    local cron_job="0 2 * * * $BACKUP_BASE_DIR/backup-matrix.sh >> $BACKUP_LOG 2>&1"
-    
-    # Add to root crontab
-    (crontab -l 2>/dev/null; echo "$cron_job") | crontab -
-    
-    log_success "Cron завдання налаштовано (щодня о 2:00)"
-}
-
 run_backup() {
     log_info "Запуск резервного копіювання..."
     
@@ -258,4 +227,4 @@ restore_backup() {
 }
 
 # Export functions
-export -f setup_backup_system run_backup list_backups restore_backup
+export -f setup_backup_system create_backup_script setup_backup_cron run_backup list_backups restore_backup

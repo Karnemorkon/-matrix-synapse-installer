@@ -5,18 +5,13 @@
 
 # --- Functions ---
 setup_security() {
-    log_info "Налаштування безпеки"
+    log_step "Налаштування безпеки"
     
-    # Setup SSL if needed
-    if [[ "${CONFIG[USE_LETSENCRYPT]}" == "true" ]]; then
-        setup_letsencrypt_ssl
-    fi
-    
-    # Setup basic firewall
+    # Setup firewall
     setup_firewall
     
-    # Set secure file permissions
-    set_secure_permissions
+    # Secure file permissions
+    secure_file_permissions
     
     log_success "Безпеку налаштовано"
 }
@@ -162,65 +157,55 @@ EOF
 }
 
 setup_firewall() {
-    log_info "Налаштування базового файрволу"
+    log_info "Налаштування файрволу..."
     
     # Install UFW if not present
     if ! command -v ufw &> /dev/null; then
-        log_command "apt install -y ufw"
+        apt install -y ufw &>> "${LOG_FILE}"
     fi
     
-    # Reset UFW to defaults
-    log_command "ufw --force reset"
-    
-    # Set default policies
-    log_command "ufw default deny incoming"
-    log_command "ufw default allow outgoing"
+    # Configure UFW
+    ufw --force reset &>> "${LOG_FILE}"
+    ufw default deny incoming &>> "${LOG_FILE}"
+    ufw default allow outgoing &>> "${LOG_FILE}"
     
     # Allow SSH
-    log_command "ufw allow ssh"
+    ufw allow ssh &>> "${LOG_FILE}"
     
-    # Allow HTTP and HTTPS if not using Cloudflare Tunnel
-    if [[ "${CONFIG[USE_CLOUDFLARE_TUNNEL]}" != "true" ]]; then
-        log_command "ufw allow 80/tcp"
-        log_command "ufw allow 443/tcp"
-        log_command "ufw allow 8008/tcp"
-        log_command "ufw allow 8448/tcp"
+    # Allow Matrix ports
+    ufw allow 8008/tcp &>> "${LOG_FILE}"  # Synapse HTTP
+    ufw allow 8448/tcp &>> "${LOG_FILE}"  # Synapse HTTPS
+    
+    # Allow web ports if Element is installed
+    if [[ "${CONFIG[INSTALL_ELEMENT]}" == "true" ]]; then
+        ufw allow 80/tcp &>> "${LOG_FILE}"
+        ufw allow 443/tcp &>> "${LOG_FILE}"
     fi
     
-    # Allow monitoring ports if monitoring is enabled
+    # Allow monitoring ports if enabled
     if [[ "${CONFIG[SETUP_MONITORING]}" == "true" ]]; then
-        log_command "ufw allow 3000/tcp"  # Grafana
-        log_command "ufw allow 9090/tcp"  # Prometheus
-    fi
-    
-    # Allow Portainer if installed
-    if [[ "${CONFIG[INSTALL_PORTAINER]}" == "true" ]]; then
-        log_command "ufw allow 9443/tcp"
+        ufw allow 3000/tcp &>> "${LOG_FILE}"  # Grafana
+        ufw allow 9090/tcp &>> "${LOG_FILE}"  # Prometheus
     fi
     
     # Enable UFW
-    log_command "ufw --force enable"
+    ufw --force enable &>> "${LOG_FILE}"
     
     log_success "Файрвол налаштовано"
 }
 
-set_secure_permissions() {
-    local base_dir="${CONFIG[BASE_DIR]}"
+secure_file_permissions() {
+    log_info "Налаштування прав доступу до файлів..."
     
-    log_info "Встановлення безпечних прав доступу"
+    # Secure Synapse configuration
+    chown -R 991:991 "${CONFIG[BASE_DIR]}/synapse/"
+    chmod 700 "${CONFIG[BASE_DIR]}/synapse/config"
+    chmod 600 "${CONFIG[BASE_DIR]}/synapse/config"/*.yaml 2>/dev/null || true
     
-    # Set ownership for Matrix directories
-    log_command "chown -R 991:991 '${base_dir}/synapse'"
+    # Secure environment file
+    chmod 600 "${CONFIG[BASE_DIR]}/.env" 2>/dev/null || true
     
-    # Set secure permissions for configuration files
-    log_command "chmod 600 '${base_dir}/.env'"
-    log_command "find '${base_dir}' -name '*.yaml' -type f -exec chmod 600 {} +"
-    log_command "find '${base_dir}' -name '*.yml' -type f -exec chmod 600 {} +"
-    
-    # Set permissions for scripts
-    log_command "chmod +x '${base_dir}/bin/'*.sh"
-    
-    log_success "Права доступу встановлено"
+    log_success "Права доступу налаштовано"
 }
 
 create_security_documentation() {
@@ -239,3 +224,8 @@ sudo apt update && sudo apt upgrade -y
 
 # Оновлення Docker образів
 ./bin/matrix-control.sh update
+EOF
+}
+
+# Export functions
+export -f setup_security setup_firewall secure_file_permissions setup_letsencrypt_ssl setup_ssl_renewal setup_nginx_proxy create_security_documentation

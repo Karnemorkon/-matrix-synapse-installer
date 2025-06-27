@@ -1,252 +1,82 @@
 #!/bin/bash
 # ===================================================================================
-# Validator Module - System and input validation
+# Validator Module - System requirements and input validation
 # ===================================================================================
-
-# --- System Requirements ---
-readonly MIN_RAM_MB=1024
-readonly MIN_DISK_GB=5
-readonly REQUIRED_COMMANDS=("docker" "docker-compose" "curl" "wget" "openssl")
 
 # --- Functions ---
 check_root_privileges() {
     if [[ $EUID -ne 0 ]]; then
-        log_error "Цей скрипт повинен запускатися з правами root"
-        log_info "Використайте: sudo $0"
+        log_error "Цей скрипт потрібно запускати з правами root або через sudo"
         exit 1
     fi
     log_success "Права root підтверджено"
 }
 
 validate_system_requirements() {
-    log_info "Перевірка системних вимог..."
+    log_step "Перевірка системних вимог"
     
     # Check OS
-    if ! check_supported_os; then
-        log_error "Непідтримувана операційна система"
+    if ! command -v apt &> /dev/null; then
+        log_error "Підтримуються лише системи на базі Debian/Ubuntu"
         exit 1
     fi
     
     # Check RAM
-    if ! check_ram_requirements; then
-        log_warn "Недостатньо оперативної пам'яті (рекомендовано мінімум ${MIN_RAM_MB}MB)"
+    local total_ram_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    local total_ram_gb=$((total_ram_kb / 1024 / 1024))
+    local min_ram_gb=2
+    
+    log_info "Доступна RAM: ${total_ram_gb}GB"
+    if [[ $total_ram_gb -lt $min_ram_gb ]]; then
+        log_warning "Рекомендується мінімум ${min_ram_gb}GB RAM"
+        if ! ask_yes_no "Продовжити встановлення?" "false"; then
+            log_error "Встановлення скасовано через недостатню кількість RAM"
+            exit 1
+        fi
+    else
+        log_success "RAM: достатньо (${total_ram_gb}GB >= ${min_ram_gb}GB)"
     fi
     
     # Check disk space
-    if ! check_disk_space; then
-        log_error "Недостатньо дискового простору"
+    local available_space_kb=$(df / | tail -1 | awk '{print $4}')
+    local available_space_gb=$((available_space_kb / 1024 / 1024))
+    local min_space_gb=10
+    
+    log_info "Доступний дисковий простір: ${available_space_gb}GB"
+    if [[ $available_space_gb -lt $min_space_gb ]]; then
+        log_error "Недостатньо дискового простору. Потрібно мінімум ${min_space_gb}GB"
         exit 1
-    fi
-    
-    # Check network connectivity
-    if ! check_network_connectivity; then
-        log_error "Відсутнє підключення до інтернету"
-        exit 1
-    fi
-    
-    log_success "Системні вимоги виконано"
-}
-
-check_supported_os() {
-    if [[ -f /etc/os-release ]]; then
-        source /etc/os-release
-        case $ID in
-            ubuntu)
-                if version_compare "$VERSION_ID" "20.04"; then
-                    log_success "Підтримувана ОС: Ubuntu $VERSION_ID"
-                    return 0
-                fi
-                ;;
-            debian)
-                if version_compare "$VERSION_ID" "11"; then
-                    log_success "Підтримувана ОС: Debian $VERSION_ID"
-                    return 0
-                fi
-                ;;
-        esac
-    fi
-    
-    log_error "Непідтримувана ОС. Підтримуються: Ubuntu 20.04+, Debian 11+"
-    return 1
-}
-
-check_ram_requirements() {
-    local ram_mb=$(free -m | awk 'NR==2{print $2}')
-    
-    if [[ $ram_mb -ge $MIN_RAM_MB ]]; then
-        log_success "Оперативна пам'ять: ${ram_mb}MB (достатньо)"
-        return 0
     else
-        log_warn "Оперативна пам'ять: ${ram_mb}MB (мінімум: ${MIN_RAM_MB}MB)"
-        return 1
+        log_success "Дисковий простір: достатньо (${available_space_gb}GB >= ${min_space_gb}GB)"
     fi
-}
-
-check_disk_space() {
-    local available_gb=$(df / | awk 'NR==2 {print int($4/1024/1024)}')
     
-    if [[ $available_gb -ge $MIN_DISK_GB ]]; then
-        log_success "Дисковий простір: ${available_gb}GB (достатньо)"
-        return 0
+    # Check architecture
+    local arch=$(uname -m)
+    log_info "Архітектура процесора: $arch"
+    if [[ "$arch" != "x86_64" && "$arch" != "aarch64" && "$arch" != "arm64" ]]; then
+        log_warning "Непідтримувана архітектура: $arch"
     else
-        log_error "Дисковий простір: ${available_gb}GB (мінімум: ${MIN_DISK_GB}GB)"
-        return 1
+        log_success "Архітектура процесора підтримується"
     fi
-}
-
-check_network_connectivity() {
-    local test_urls=("google.com" "github.com" "docker.io")
     
-    for url in "${test_urls[@]}"; do
-        if ping -c 1 -W 5 "$url" &>/dev/null; then
-            log_success "Мережеве підключення: OK"
-            return 0
-        fi
-    done
-    
-    log_error "Відсутнє підключення до інтернету"
-    return 1
+    log_success "Перевірка системних вимог завершена"
 }
 
 validate_domain() {
     local domain="$1"
-    
-    # Basic domain format validation
-    if [[ $domain =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
-        # Check if domain resolves
-        if nslookup "$domain" &>/dev/null; then
-            log_success "Домен $domain валідний та резолвиться"
-            return 0
-        else
-            log_warn "Домен $domain не резолвиться (це нормально для нових доменів)"
-            return 0
-        fi
-    else
-        log_error "Невірний формат домену: $domain"
+    if [[ ! "$domain" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
         return 1
     fi
+    return 0
 }
 
 validate_email() {
     local email="$1"
-    
-    if [[ $email =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
-        log_success "Email $email валідний"
-        return 0
-    else
-        log_error "Невірний формат email: $email"
+    if [[ ! "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
         return 1
     fi
-}
-
-validate_port() {
-    local port="$1"
-    
-    if [[ $port =~ ^[0-9]+$ ]] && [[ $port -ge 1 ]] && [[ $port -le 65535 ]]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
-check_port_available() {
-    local port="$1"
-    
-    if netstat -tuln | grep -q ":$port "; then
-        log_warn "Порт $port вже використовується"
-        return 1
-    else
-        log_success "Порт $port доступний"
-        return 0
-    fi
-}
-
-version_compare() {
-    local version1="$1"
-    local version2="$2"
-    
-    if [[ "$(printf '%s\n' "$version2" "$version1" | sort -V | head -n1)" == "$version2" ]]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
-validate_directory_writable() {
-    local dir="$1"
-    
-    if [[ -d "$dir" ]]; then
-        if [[ -w "$dir" ]]; then
-            log_success "Директорія $dir доступна для запису"
-            return 0
-        else
-            log_error "Директорія $dir недоступна для запису"
-            return 1
-        fi
-    else
-        # Try to create directory
-        if mkdir -p "$dir" 2>/dev/null; then
-            log_success "Директорія $dir створена"
-            return 0
-        else
-            log_error "Неможливо створити директорію $dir"
-            return 1
-        fi
-    fi
-}
-
-check_command_exists() {
-    local cmd="$1"
-    
-    if command -v "$cmd" &>/dev/null; then
-        log_success "Команда $cmd знайдена"
-        return 0
-    else
-        log_error "Команда $cmd не знайдена"
-        return 1
-    fi
-}
-
-validate_required_commands() {
-    local missing_commands=()
-    
-    for cmd in "${REQUIRED_COMMANDS[@]}"; do
-        if ! check_command_exists "$cmd"; then
-            missing_commands+=("$cmd")
-        fi
-    done
-    
-    if [[ ${#missing_commands[@]} -gt 0 ]]; then
-        log_error "Відсутні необхідні команди: ${missing_commands[*]}"
-        log_info "Встановіть їх перед продовженням"
-        return 1
-    fi
-    
-    log_success "Всі необхідні команди доступні"
     return 0
 }
 
-validate_cloudflare_token() {
-    local token="$1"
-    
-    if [[ -z "$token" ]]; then
-        log_error "Cloudflare токен порожній"
-        return 1
-    fi
-    
-    # Basic token format validation (Cloudflare tokens are typically 40 characters)
-    if [[ ${#token} -ge 32 ]]; then
-        log_success "Cloudflare токен має правильний формат"
-        return 0
-    else
-        log_error "Cloudflare токен має невірний формат"
-        return 1
-    fi
-}
-
 # Export functions
-export -f check_root_privileges validate_system_requirements
-export -f validate_domain validate_email validate_port
-export -f check_port_available validate_directory_writable
-export -f check_command_exists validate_required_commands
-export -f validate_cloudflare_token
+export -f check_root_privileges validate_system_requirements validate_domain validate_email

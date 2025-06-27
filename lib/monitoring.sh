@@ -5,63 +5,37 @@
 
 # --- Functions ---
 setup_monitoring_stack() {
-    log_info "Налаштування стеку моніторингу..."
+    if [[ "${SETUP_MONITORING}" != "true" ]]; then
+        return 0
+    fi
+    
+    log_step "Налаштування системи моніторингу"
+    
+    # Create Prometheus configuration
+    create_prometheus_config
+    
+    # Create Grafana datasource
+    create_grafana_datasource
     
     # Create monitoring directories
     create_monitoring_directories
     
-    # Generate Prometheus configuration
-    generate_prometheus_config
-    
     # Generate Grafana configuration
     generate_grafana_config
-    
-    # Generate Alertmanager configuration
-    generate_alertmanager_config
     
     # Create dashboards
     create_grafana_dashboards
     
-    log_success "Стек моніторингу налаштовано"
+    log_success "Систему моніторингу налаштовано"
 }
 
-create_monitoring_directories() {
-    local directories=(
-        "$BASE_DIR/prometheus/data"
-        "$BASE_DIR/prometheus/config"
-        "$BASE_DIR/grafana/data"
-        "$BASE_DIR/grafana/provisioning/dashboards"
-        "$BASE_DIR/grafana/provisioning/datasources"
-        "$BASE_DIR/alertmanager/data"
-        "$BASE_DIR/alertmanager/config"
-    )
+create_prometheus_config() {
+    log_info "Створення конфігурації Prometheus..."
     
-    for dir in "${directories[@]}"; do
-        mkdir -p "$dir"
-    done
-    
-    # Set proper permissions
-    chown -R 472:472 "$BASE_DIR/grafana"
-    chown -R 65534:65534 "$BASE_DIR/prometheus"
-    chown -R 65534:65534 "$BASE_DIR/alertmanager"
-}
-
-generate_prometheus_config() {
-    local config_file="$BASE_DIR/prometheus/config/prometheus.yml"
-    
-    cat > "$config_file" << EOF
+    cat > "${BASE_DIR}/monitoring/prometheus/prometheus.yml" << EOF
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
-
-rule_files:
-  - "/etc/prometheus/rules/*.yml"
-
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets:
-          - alertmanager:9093
 
 scrape_configs:
   - job_name: 'prometheus'
@@ -72,97 +46,53 @@ scrape_configs:
     static_configs:
       - targets: ['synapse:9000']
     metrics_path: /_synapse/metrics
-
-  - job_name: 'node-exporter'
-    static_configs:
-      - targets: ['node-exporter:9100']
-
-  - job_name: 'postgres-exporter'
-    static_configs:
-      - targets: ['postgres-exporter:9187']
-
-  - job_name: 'nginx-exporter'
-    static_configs:
-      - targets: ['nginx-exporter:9113']
 EOF
-
-    # Create alert rules
-    create_alert_rules
     
-    log_success "Конфігурацію Prometheus створено"
+    # Enable metrics in Synapse
+    local homeserver_config="${BASE_DIR}/synapse/config/homeserver.yaml"
+    if ! grep -q "enable_metrics: true" "${homeserver_config}"; then
+        echo "" >> "${homeserver_config}"
+        echo "# Metrics for monitoring" >> "${homeserver_config}"
+        echo "enable_metrics: true" >> "${homeserver_config}"
+        echo "metrics_port: 9000" >> "${homeserver_config}"
+    fi
 }
 
-create_alert_rules() {
-    local rules_dir="$BASE_DIR/prometheus/config/rules"
-    mkdir -p "$rules_dir"
+create_grafana_datasource() {
+    log_info "Створення джерела даних Grafana..."
     
-    cat > "$rules_dir/matrix.yml" << 'EOF'
-groups:
-  - name: matrix.rules
-    rules:
-      - alert: SynapseDown
-        expr: up{job="synapse"} == 0
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Synapse is down"
-          description: "Synapse has been down for more than 5 minutes."
-
-      - alert: PostgreSQLDown
-        expr: up{job="postgres-exporter"} == 0
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "PostgreSQL is down"
-          description: "PostgreSQL has been down for more than 5 minutes."
-
-      - alert: HighMemoryUsage
-        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes > 0.9
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High memory usage"
-          description: "Memory usage is above 90% for more than 10 minutes."
-
-      - alert: HighDiskUsage
-        expr: (node_filesystem_size_bytes{mountpoint="/"} - node_filesystem_free_bytes{mountpoint="/"}) / node_filesystem_size_bytes{mountpoint="/"} > 0.8
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High disk usage"
-          description: "Disk usage is above 80% for more than 5 minutes."
-
-      - alert: HighCPUUsage
-        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High CPU usage"
-          description: "CPU usage is above 80% for more than 10 minutes."
-EOF
-}
-
-generate_grafana_config() {
-    # Datasource configuration
-    cat > "$BASE_DIR/grafana/provisioning/datasources/prometheus.yml" << EOF
+    cat > "${BASE_DIR}/monitoring/grafana/datasources/prometheus.yml" << EOF
 apiVersion: 1
-
 datasources:
   - name: Prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
     isDefault: true
-    editable: true
 EOF
+}
 
+create_monitoring_directories() {
+    local directories=(
+        "${BASE_DIR}/monitoring/prometheus/data"
+        "${BASE_DIR}/monitoring/prometheus/config"
+        "${BASE_DIR}/monitoring/grafana/data"
+        "${BASE_DIR}/monitoring/grafana/dashboards"
+        "${BASE_DIR}/monitoring/grafana/datasources"
+    )
+    
+    for dir in "${directories[@]}"; do
+        mkdir -p "$dir"
+    done
+    
+    # Set proper permissions
+    chown -R 472:472 "${BASE_DIR}/monitoring/grafana"
+    chown -R 65534:65534 "${BASE_DIR}/monitoring/prometheus"
+}
+
+generate_grafana_config() {
     # Dashboard provisioning
-    cat > "$BASE_DIR/grafana/provisioning/dashboards/dashboard.yml" << EOF
+    cat > "${BASE_DIR}/monitoring/grafana/provisioning/dashboards/dashboard.yml" << EOF
 apiVersion: 1
 
 providers:
@@ -180,56 +110,17 @@ EOF
     log_success "Конфігурацію Grafana створено"
 }
 
-generate_alertmanager_config() {
-    local config_file="$BASE_DIR/alertmanager/config/alertmanager.yml"
-    
-    cat > "$config_file" << EOF
-global:
-  smtp_smarthost: 'localhost:587'
-  smtp_from: 'alertmanager@$DOMAIN'
-  smtp_auth_username: ''
-  smtp_auth_password: ''
-
-route:
-  group_by: ['alertname']
-  group_wait: 10s
-  group_interval: 10s
-  repeat_interval: 1h
-  receiver: 'web.hook'
-
-receivers:
-  - name: 'web.hook'
-    email_configs:
-      - to: '$ADMIN_EMAIL'
-        subject: 'Matrix Alert: {{ .GroupLabels.alertname }}'
-        body: |
-          {{ range .Alerts }}
-          Alert: {{ .Annotations.summary }}
-          Description: {{ .Annotations.description }}
-          {{ end }}
-
-inhibit_rules:
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
-    equal: ['alertname', 'dev', 'instance']
-EOF
-
-    log_success "Конфігурацію Alertmanager створено"
-}
-
 create_grafana_dashboards() {
-    local dashboard_dir="$BASE_DIR/grafana/provisioning/dashboards"
+    local dashboard_dir="${BASE_DIR}/monitoring/grafana/dashboards"
     
     # Matrix Synapse Dashboard
-    create_synapse_dashboard "$dashboard_dir/synapse.json"
+    create_synapse_dashboard "${dashboard_dir}/synapse.json"
     
     # System Dashboard
-    create_system_dashboard "$dashboard_dir/system.json"
+    create_system_dashboard "${dashboard_dir}/system.json"
     
     # PostgreSQL Dashboard
-    create_postgres_dashboard "$dashboard_dir/postgres.json"
+    create_postgres_dashboard "${dashboard_dir}/postgres.json"
     
     log_success "Дашборди Grafana створено"
 }
@@ -463,8 +354,8 @@ add_monitoring_services() {
       - '--storage.tsdb.retention.time=200h'
       - '--web.enable-lifecycle'
     volumes:
-      - ./prometheus/config:/etc/prometheus
-      - ./prometheus/data:/prometheus
+      - ./monitoring/prometheus/config:/etc/prometheus
+      - ./monitoring/prometheus/data:/prometheus
     ports:
       - "9090:9090"
     networks:
@@ -478,26 +369,14 @@ add_monitoring_services() {
       - GF_SECURITY_ADMIN_PASSWORD=admin123
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
-      - ./grafana/data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
     ports:
       - "3000:3000"
     networks:
       - matrix-net
     depends_on:
       - prometheus
-
-  alertmanager:
-    image: prom/alertmanager:latest
-    container_name: matrix-alertmanager
-    restart: unless-stopped
-    volumes:
-      - ./alertmanager/config:/etc/alertmanager
-      - ./alertmanager/data:/alertmanager
-    ports:
-      - "9093:9093"
-    networks:
-      - matrix-net
 
   node-exporter:
     image: prom/node-exporter:latest
@@ -533,4 +412,4 @@ EOF
 }
 
 # Export functions
-export -f setup_monitoring_stack add_monitoring_services
+export -f setup_monitoring_stack add_monitoring_services create_prometheus_config create_grafana_datasource
