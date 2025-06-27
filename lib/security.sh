@@ -17,7 +17,7 @@ setup_security() {
 }
 
 setup_letsencrypt_ssl() {
-    if [[ "${CONFIG[USE_CLOUDFLARE_TUNNEL]}" == "true" ]]; then
+    if [[ "${USE_CLOUDFLARE_TUNNEL}" == "true" ]]; then
         log_info "Пропуск Let's Encrypt (використовується Cloudflare Tunnel)"
         return 0
     fi
@@ -29,8 +29,8 @@ setup_letsencrypt_ssl() {
     log_command "apt install -y certbot nginx"
     
     # Get SSL certificate
-    local domain="${CONFIG[DOMAIN]}"
-    local email="${CONFIG[LETSENCRYPT_EMAIL]}"
+    local domain="${DOMAIN}"
+    local email="${LETSENCRYPT_EMAIL:-admin@${DOMAIN}}"
     
     log_info "Отримання SSL сертифікату для домену: ${domain}"
     
@@ -58,8 +58,8 @@ setup_ssl_renewal() {
 }
 
 setup_nginx_proxy() {
-    local domain="${CONFIG[DOMAIN]}"
-    local base_dir="${CONFIG[BASE_DIR]}"
+    local domain="${DOMAIN}"
+    local base_dir="${BASE_DIR}"
     
     log_info "Налаштування Nginx reverse proxy"
     
@@ -115,7 +115,7 @@ server {
 EOF
 
     # Add Element Web location if installed
-    if [[ "${CONFIG[INSTALL_ELEMENT]}" == "true" ]]; then
+    if [[ "${INSTALL_ELEMENT}" == "true" ]]; then
         cat >> "/etc/nginx/sites-available/${domain}" << EOF
 
     # Element Web
@@ -177,13 +177,13 @@ setup_firewall() {
     ufw allow 8448/tcp &>> "${LOG_FILE}"  # Synapse HTTPS
     
     # Allow web ports if Element is installed
-    if [[ "${CONFIG[INSTALL_ELEMENT]}" == "true" ]]; then
+    if [[ "${INSTALL_ELEMENT:-false}" == "true" ]]; then
         ufw allow 80/tcp &>> "${LOG_FILE}"
         ufw allow 443/tcp &>> "${LOG_FILE}"
     fi
     
     # Allow monitoring ports if enabled
-    if [[ "${CONFIG[SETUP_MONITORING]}" == "true" ]]; then
+    if [[ "${SETUP_MONITORING:-false}" == "true" ]]; then
         ufw allow 3000/tcp &>> "${LOG_FILE}"  # Grafana
         ufw allow 9090/tcp &>> "${LOG_FILE}"  # Prometheus
     fi
@@ -198,18 +198,18 @@ secure_file_permissions() {
     log_info "Налаштування прав доступу до файлів..."
     
     # Secure Synapse configuration
-    chown -R 991:991 "${CONFIG[BASE_DIR]}/synapse/"
-    chmod 700 "${CONFIG[BASE_DIR]}/synapse/config"
-    chmod 600 "${CONFIG[BASE_DIR]}/synapse/config"/*.yaml 2>/dev/null || true
+    chown -R 991:991 "${BASE_DIR}/synapse/"
+    chmod 700 "${BASE_DIR}/synapse/config"
+    chmod 600 "${BASE_DIR}/synapse/config"/*.yaml 2>/dev/null || true
     
     # Secure environment file
-    chmod 600 "${CONFIG[BASE_DIR]}/.env" 2>/dev/null || true
+    chmod 600 "${BASE_DIR}/.env" 2>/dev/null || true
     
     log_success "Права доступу налаштовано"
 }
 
 create_security_documentation() {
-    local base_dir="${CONFIG[BASE_DIR]}"
+    local base_dir="${BASE_DIR}"
     local docs_dir="${base_dir}/docs"
     
     cat > "${docs_dir}/SECURITY.md" << 'EOF'
