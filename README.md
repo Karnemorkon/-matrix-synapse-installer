@@ -49,11 +49,11 @@
 
 ### 1. Завантаження
 
-\`\`\`bash
+```bash
 git clone https://github.com/your-username/matrix-synapse-installer.git
 cd matrix-synapse-installer
 chmod +x install.sh
-\`\`\`
+```
 
 ### 2. Запуск встановлення
 
