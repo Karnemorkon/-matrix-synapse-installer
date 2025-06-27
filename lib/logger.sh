@@ -1,14 +1,9 @@
 #!/bin/bash
 # ===================================================================================
-# Logger Module - Centralized logging functionality
+# Logger Module - Centralized logging system
 # ===================================================================================
 
-# --- Configuration ---
-readonly LOG_DIR="${LOG_DIR:-/var/log/matrix-installer}"
-readonly LOG_FILE="${LOG_DIR}/install-$(date +%Y-%m-%d_%H-%M-%S).log"
-readonly LOG_LEVEL="${LOG_LEVEL:-INFO}"
-
-# --- Colors ---
+# --- Color Codes ---
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
 readonly YELLOW='\033[1;33m'
@@ -19,113 +14,132 @@ readonly WHITE='\033[1;37m'
 readonly NC='\033[0m' # No Color
 
 # --- Log Levels ---
-readonly LOG_LEVEL_ERROR=1
+readonly LOG_LEVEL_DEBUG=0
+readonly LOG_LEVEL_INFO=1
 readonly LOG_LEVEL_WARN=2
-readonly LOG_LEVEL_INFO=3
-readonly LOG_LEVEL_DEBUG=4
+readonly LOG_LEVEL_ERROR=3
+readonly LOG_LEVEL_SUCCESS=4
+
+# --- Configuration ---
+LOG_LEVEL=${LOG_LEVEL:-$LOG_LEVEL_INFO}
+LOG_FILE=""
+LOG_TO_FILE=${LOG_TO_FILE:-false}
 
 # --- Functions ---
 init_logger() {
-    mkdir -p "${LOG_DIR}"
-    touch "${LOG_FILE}"
+    local log_dir="/var/log/matrix-installer"
     
-    # Set permissions
-    chmod 755 "${LOG_DIR}"
-    chmod 644 "${LOG_FILE}"
+    if [[ "$EUID" -eq 0 ]]; then
+        mkdir -p "$log_dir"
+        LOG_FILE="$log_dir/install-$(date +%Y%m%d_%H%M%S).log"
+        LOG_TO_FILE=true
+        
+        # Create symlink to latest log
+        ln -sf "$LOG_FILE" "$log_dir/latest.log"
+    else
+        LOG_FILE="./matrix-install-$(date +%Y%m%d_%H%M%S).log"
+        LOG_TO_FILE=true
+    fi
     
-    log_info "Logger initialized. Log file: ${LOG_FILE}"
-}
-
-get_log_level_num() {
-    case "${LOG_LEVEL}" in
-        ERROR) echo ${LOG_LEVEL_ERROR} ;;
-        WARN)  echo ${LOG_LEVEL_WARN} ;;
-        INFO)  echo ${LOG_LEVEL_INFO} ;;
-        DEBUG) echo ${LOG_LEVEL_DEBUG} ;;
-        *) echo ${LOG_LEVEL_INFO} ;;
-    esac
-}
-
-should_log() {
-    local level_num=$1
-    local current_level_num
-    current_level_num=$(get_log_level_num)
-    
-    [[ ${level_num} -le ${current_level_num} ]]
+    log_info "Логування ініціалізовано: $LOG_FILE"
 }
 
 log_message() {
-    local level=$1
-    local level_num=$2
-    local color=$3
-    local message=$4
-    local timestamp
-    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local level="$1"
+    local color="$2"
+    local message="$3"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     
-    # Log to file
-    echo "[${timestamp}] [${level}] ${message}" >> "${LOG_FILE}"
+    # Console output with colors
+    echo -e "${color}[${timestamp}] [${level}] ${message}${NC}"
     
-    # Log to console if level is appropriate
-    if should_log "${level_num}"; then
-        echo -e "${color}[${level}]${NC} ${message}"
+    # File output without colors
+    if [[ "$LOG_TO_FILE" == "true" && -n "$LOG_FILE" ]]; then
+        echo "[${timestamp}] [${level}] ${message}" >> "$LOG_FILE"
     fi
 }
 
-log_error() {
-    log_message "ERROR" ${LOG_LEVEL_ERROR} "${RED}" "$1"
-}
-
-log_warn() {
-    log_message "WARN" ${LOG_LEVEL_WARN} "${YELLOW}" "$1"
+log_debug() {
+    [[ $LOG_LEVEL -le $LOG_LEVEL_DEBUG ]] && log_message "DEBUG" "$CYAN" "$1"
 }
 
 log_info() {
-    log_message "INFO" ${LOG_LEVEL_INFO} "${BLUE}" "$1"
+    [[ $LOG_LEVEL -le $LOG_LEVEL_INFO ]] && log_message "INFO" "$BLUE" "$1"
+}
+
+log_warn() {
+    [[ $LOG_LEVEL -le $LOG_LEVEL_WARN ]] && log_message "WARN" "$YELLOW" "$1"
+}
+
+log_error() {
+    [[ $LOG_LEVEL -le $LOG_LEVEL_ERROR ]] && log_message "ERROR" "$RED" "$1" >&2
 }
 
 log_success() {
-    log_message "SUCCESS" ${LOG_LEVEL_INFO} "${GREEN}" "$1"
-}
-
-log_debug() {
-    log_message "DEBUG" ${LOG_LEVEL_DEBUG} "${PURPLE}" "$1"
+    [[ $LOG_LEVEL -le $LOG_LEVEL_SUCCESS ]] && log_message "SUCCESS" "$GREEN" "$1"
 }
 
 log_step() {
     echo
-    log_message "STEP" ${LOG_LEVEL_INFO} "${CYAN}" "=== $1 ==="
+    log_message "STEP" "$PURPLE" "=== $1 ==="
+    echo
 }
 
-log_command() {
-    local cmd=$1
-    log_debug "Executing: ${cmd}"
-    
-    if eval "${cmd}" >> "${LOG_FILE}" 2>&1; then
-        log_debug "Command succeeded: ${cmd}"
-        return 0
-    else
-        local exit_code=$?
-        log_error "Command failed (exit code: ${exit_code}): ${cmd}"
-        return ${exit_code}
-    fi
-}
-
-# Progress indicator
+# Progress bar function
 show_progress() {
     local current=$1
     local total=$2
-    local message=$3
-    local percent=$((current * 100 / total))
-    local filled=$((percent / 2))
-    local empty=$((50 - filled))
+    local message=${3:-"Processing"}
+    local width=50
     
-    printf "\r${BLUE}[${GREEN}"
+    local percentage=$((current * 100 / total))
+    local filled=$((current * width / total))
+    local empty=$((width - filled))
+    
+    printf "\r${BLUE}${message}: ["
     printf "%${filled}s" | tr ' ' '='
-    printf "${NC}${BLUE}"
     printf "%${empty}s" | tr ' ' '-'
-    printf "] ${percent}%% ${message}${NC}"
+    printf "] %d%% (%d/%d)${NC}" "$percentage" "$current" "$total"
     
-    if [[ ${current} -eq ${total} ]]; then
+    if [[ $current -eq $total ]]; then
         echo
     fi
 }
+
+# Spinner function for long operations
+show_spinner() {
+    local pid=$1
+    local message=${2:-"Processing"}
+    local delay=0.1
+    local spinstr='|/-\'
+    
+    while kill -0 "$pid" 2>/dev/null; do
+        local temp=${spinstr#?}
+        printf "\r${BLUE}${message}... %c${NC}" "$spinstr"
+        spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+    done
+    printf "\r${GREEN}${message}... Done!${NC}\n"
+}
+
+# Error handling
+handle_error() {
+    local exit_code=$?
+    local line_number=$1
+    
+    log_error "Помилка в рядку $line_number (код виходу: $exit_code)"
+    log_error "Команда: ${BASH_COMMAND}"
+    
+    if [[ -n "$LOG_FILE" ]]; then
+        log_error "Детальні логи: $LOG_FILE"
+    fi
+    
+    exit $exit_code
+}
+
+# Set error trap
+trap 'handle_error $LINENO' ERR
+
+# Export functions
+export -f log_debug log_info log_warn log_error log_success log_step
+export -f show_progress show_spinner handle_error
