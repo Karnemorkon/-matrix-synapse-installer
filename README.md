@@ -50,7 +50,7 @@
 ### 1. Завантаження
 
 ```bash
-git clone https://github.com/your-username/matrix-synapse-installer.git
+git clone https://github.com/Karnemorkon/-matrix-synapse-installer.git
 cd matrix-synapse-installer
 chmod +x install.sh
 ```
@@ -187,7 +187,7 @@ tail -f /DATA/matrix-backups/backup.log
 
 ### Отримання допомоги
 
-1. **GitHub Issues**: [Створити issue](https://github.com/your-username/matrix-synapse-installer/issues)
+1. **GitHub Issues**: [Створити issue](https://github.com/Karnemorkon/-matrix-synapse-installer/issues)
 2. **Документація**: Перевірте локальну документацію після встановлення
 
 ### Внесок у проект
