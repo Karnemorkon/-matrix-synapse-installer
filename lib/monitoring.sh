@@ -30,7 +30,7 @@ setup_monitoring_stack() {
 }
 
 create_prometheus_config() {
-    log_info "Створення kонфігурації Prometheus..."
+    log_info "Створення конфігурації Prometheus..."
     
     cat > "${BASE_DIR}/monitoring/prometheus/prometheus.yml" << EOF
 global:
