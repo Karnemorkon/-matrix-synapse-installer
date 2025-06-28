@@ -180,6 +180,19 @@ EOF
 EOF
     fi
     
+    # Add Cloudflare Tunnel if enabled
+    if [[ "${USE_CLOUDFLARE_TUNNEL}" == "true" ]]; then
+        cat >> "${compose_file}" << EOF
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel run --token \${CLOUDFLARE_TUNNEL_TOKEN}
+    environment:
+      - TUNNEL_TOKEN=\${CLOUDFLARE_TUNNEL_TOKEN}
+EOF
+    fi
+    
     # Add monitoring if enabled
     if [[ "${SETUP_MONITORING}" == "true" ]]; then
         cat >> "${compose_file}" << EOF
@@ -210,23 +223,16 @@ EOF
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin123
       - GF_USERS_ALLOW_SIGN_UP=false
+EOF
+    fi
+    
+    # Add volumes section only if monitoring is enabled
+    if [[ "${SETUP_MONITORING}" == "true" ]]; then
+        cat >> "${compose_file}" << EOF
 
 volumes:
   prometheus_data:
   grafana_data:
-EOF
-    fi
-    
-    # Add Cloudflare Tunnel if enabled
-    if [[ "${USE_CLOUDFLARE_TUNNEL}" == "true" ]]; then
-        cat >> "${compose_file}" << EOF
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    command: tunnel run --token \${CLOUDFLARE_TUNNEL_TOKEN}
-    environment:
-      - TUNNEL_TOKEN=\${CLOUDFLARE_TUNNEL_TOKEN}
 EOF
     fi
     
@@ -243,6 +249,15 @@ start_matrix_services() {
     log_step "Запуск Matrix сервісів"
     
     cd "${BASE_DIR}"
+    
+    # Validate docker-compose.yml first
+    log_info "Перевірка синтаксису Docker Compose файлу..."
+    if ! docker compose config > /dev/null 2>&1; then
+        log_error "Помилка в синтаксисі Docker Compose файлу"
+        log_info "Перевірте файл: ${BASE_DIR}/docker-compose.yml"
+        docker compose config 2>&1 | tee -a "${LOG_FILE}"
+        return 1
+    fi
     
     # Pull images with progress
     log_info "Завантаження Docker образів..."

@@ -4,7 +4,16 @@
 # ===================================================================================
 
 # --- Configuration ---
-readonly LOG_DIR="${HOME}/.local/share/matrix-installer/logs"
+# Determine the actual user's home directory
+if [[ -n "${SUDO_USER}" ]]; then
+    # Script is run with sudo, use the original user's home
+    ACTUAL_USER_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
+    LOG_DIR="${ACTUAL_USER_HOME}/.local/share/matrix-installer/logs"
+else
+    # Script is run directly as root or without sudo
+    LOG_DIR="/var/log/matrix-installer"
+fi
+
 readonly LOG_FILE="${LOG_DIR}/install-$(date +%Y%m%d-%H%M%S).log"
 
 # Colors for output
@@ -18,10 +27,22 @@ readonly NC='\033[0m' # No Color
 
 # --- Functions ---
 init_logger() {
+    # Create log directory with proper permissions
     mkdir -p "${LOG_DIR}"
+    
+    # If using sudo, set proper ownership
+    if [[ -n "${SUDO_USER}" ]]; then
+        chown -R "${SUDO_USER}:${SUDO_USER}" "$(dirname "${LOG_DIR}")" 2>/dev/null || true
+    fi
+    
     touch "${LOG_FILE}"
     log_info "Ініціалізація системи логування"
     log_info "Файл логу: ${LOG_FILE}"
+    
+    # Log system information
+    log_info "Користувач: ${SUDO_USER:-root}"
+    log_info "Робоча директорія: $(pwd)"
+    log_info "Версія скрипта: Matrix Synapse Installer 3.0"
 }
 
 log_raw() {
