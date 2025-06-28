@@ -37,11 +37,12 @@ main() {
     # Load or create configuration
     if [[ -f "${CONFIG_FILE}" ]]; then
         log_info "Знайдено існуючу конфігурацію: ${CONFIG_FILE}"
-        load_config
         
         if ask_yes_no "Використати існуючу конфігурацію?"; then
             log_info "Використовую існуючу конфігурацію"
+            load_config
         else
+            log_info "Створюю нову конфігурацію"
             interactive_config
         fi
     else
@@ -96,6 +97,11 @@ execute_installation() {
     # Step 3: Generate configurations
     log_step "Генерація конфігураційних файлів"
     generate_synapse_config
+    
+    # Generate Element config if enabled
+    if [[ "${INSTALL_ELEMENT}" == "true" ]]; then
+        generate_element_config
+    fi
     
     if [[ "${INSTALL_BRIDGES}" == "true" ]]; then
         generate_bridge_configs

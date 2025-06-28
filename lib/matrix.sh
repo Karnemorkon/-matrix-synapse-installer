@@ -1,79 +1,104 @@
 #!/bin/bash
 # ===================================================================================
-# Matrix Module - Matrix Synapse specific configuration
+# Matrix Module - Handles Matrix Synapse configuration and setup
 # ===================================================================================
 
 # --- Functions ---
+setup_directory_structure() {
+    log_step "Створення структури директорій"
+    
+    # Create main directories
+    mkdir -p "${BASE_DIR}"/{data,config,logs,backups,bin,docs}
+    mkdir -p "${BASE_DIR}/data"/{synapse,postgres,prometheus,grafana}
+    mkdir -p "${BASE_DIR}/config"/{synapse,prometheus,grafana,nginx}
+    
+    # Create Element directory if needed
+    if [[ "${INSTALL_ELEMENT}" == "true" ]]; then
+        mkdir -p "${BASE_DIR}/element"
+    fi
+    
+    # Create bridges directories if needed
+    if [[ "${INSTALL_BRIDGES}" == "true" ]]; then
+        mkdir -p "${BASE_DIR}/bridges"/{telegram,whatsapp,discord}
+    fi
+    
+    # Set proper permissions
+    chown -R 991:991 "${BASE_DIR}/data/synapse"
+    chmod -R 755 "${BASE_DIR}"
+    
+    log_success "Структуру директорій створено"
+}
+
 generate_synapse_config() {
     log_step "Генерація конфігурації Synapse"
     
-    local config_dir="${BASE_DIR}/synapse/config"
+    local config_dir="${BASE_DIR}/config/synapse"
+    local data_dir="${BASE_DIR}/data/synapse"
     
-    # Generate initial config
-    log_info "Створення початкової конфігурації..."
-    docker run --rm \
-        -v "${config_dir}:/data" \
-        -e SYNAPSE_SERVER_NAME="${DOMAIN}" \
-        -e SYNAPSE_REPORT_STATS=no \
-        matrixdotorg/synapse:latest generate &>> "${LOG_FILE}"
-    
-    # Set proper permissions
-    chown -R 991:991 "${config_dir}"
-    chmod 600 "${config_dir}/homeserver.yaml"
+    # Generate initial config if it doesn't exist
+    if [[ ! -f "${data_dir}/homeserver.yaml" ]]; then
+        log_info "Створення початкової конфігурації..."
+        docker run --rm \
+            -v "${data_dir}:/data" \
+            -e SYNAPSE_SERVER_NAME="${DOMAIN}" \
+            -e SYNAPSE_REPORT_STATS=no \
+            matrixdotorg/synapse:latest generate
+    fi
     
     # Configure database
-    configure_database
-    
-    # Configure registration and federation
-    configure_registration_and_federation
-    
-    log_success "Конфігурацію Synapse створено"
-}
-
-configure_database() {
     log_info "Налаштування бази даних..."
-    
-    local homeserver_config="${BASE_DIR}/synapse/config/homeserver.yaml"
-    
-    # Replace SQLite with PostgreSQL configuration
-    cat >> "${homeserver_config}" << EOF
-
-# Database configuration
+    cat > "${config_dir}/database.yaml" << EOF
 database:
   name: psycopg2
   args:
-    user: matrix_user
+    user: synapse
     password: ${POSTGRES_PASSWORD}
-    database: matrix_db
+    database: synapse
     host: postgres
     port: 5432
     cp_min: 5
     cp_max: 10
 EOF
-}
-
-configure_registration_and_federation() {
+    
+    # Configure registration and federation
     log_info "Налаштування реєстрації та федерації..."
-    
-    local homeserver_config="${BASE_DIR}/synapse/config/homeserver.yaml"
-    
-    # Configure registration
-    if [[ "${ALLOW_PUBLIC_REGISTRATION}" == "true" ]]; then
-        sed -i "s|enable_registration: false|enable_registration: true|" "${homeserver_config}"
-    fi
-    
-    # Configure federation
-    if [[ "${ENABLE_FEDERATION}" == "false" ]]; then
-        echo "federation_enabled: false" >> "${homeserver_config}"
-    fi
-    
-    # Add metrics configuration
-    cat >> "${homeserver_config}" << EOF
-
-# Metrics configuration
-enable_metrics: true
-metrics_port: 9000
+    cat > "${config_dir}/registration.yaml" << EOF
+enable_registration: ${ALLOW_PUBLIC_REGISTRATION}
+enable_registration_without_verification: ${ALLOW_PUBLIC_REGISTRATION}
+federation_domain_whitelist: []
 EOF
+    
+    if [[ "${ENABLE_FEDERATION}" == "false" ]]; then
+        echo "federation_domain_whitelist: []" >> "${config_dir}/registration.yaml"
+    fi
+    
+    # Create logging config
+    cat > "${config_dir}/logging.yaml" << EOF
+version: 1
+formatters:
+  precise:
+    format: '%(asctime)s - %(name)s - %(lineno)d - %(levelname)s - %(request)s - %(message)s'
+handlers:
+  file:
+    class: logging.handlers.TimedRotatingFileHandler
+    formatter: precise
+    filename: /data/homeserver.log
+    when: midnight
+    backupCount: 3
+    encoding: utf8
+  console:
+    class: logging.StreamHandler
+    formatter: precise
+loggers:
+  synapse.storage.SQL:
+    level: INFO
+root:
+  level: INFO
+  handlers: [file, console]
+disable_existing_loggers: false
+EOF
+    
+    log_success "Конфігурацію Synapse створено"
 }
 
 generate_element_config() {
@@ -81,11 +106,13 @@ generate_element_config() {
         return 0
     fi
     
-    log_step "Налаштування Element Web"
+    log_info "Створення конфігурації Element Web..."
     
-    cat > "${BASE_DIR}/element/config.json" << EOF
+    local element_dir="${BASE_DIR}/element"
+    mkdir -p "${element_dir}"
+    
+    cat > "${element_dir}/config.json" << EOF
 {
-    "default_server_name": "${DOMAIN}",
     "default_server_config": {
         "m.homeserver": {
             "base_url": "https://${DOMAIN}",
@@ -95,235 +122,165 @@ generate_element_config() {
             "base_url": "https://vector.im"
         }
     },
-    "default_identity_server": "https://vector.im",
-    "disable_custom_homeserver": false,
-    "show_labs_settings": true,
-    "brand": "Matrix (${DOMAIN})"
+    "disable_custom_urls": false,
+    "disable_guests": true,
+    "disable_login_language_selector": false,
+    "disable_3pid_login": false,
+    "brand": "Element",
+    "integrations_ui_url": "https://scalar.vector.im/",
+    "integrations_rest_url": "https://scalar.vector.im/api",
+    "integrations_widgets_urls": [
+        "https://scalar.vector.im/_matrix/integrations/v1",
+        "https://scalar.vector.im/api",
+        "https://scalar-staging.vector.im/_matrix/integrations/v1",
+        "https://scalar-staging.vector.im/api",
+        "https://scalar-staging.riot.im/scalar/api"
+    ],
+    "bug_report_endpoint_url": "https://element.io/bugreports/submit",
+    "defaultCountryCode": "UA",
+    "showLabsSettings": false,
+    "features": {
+        "feature_new_spinner": true,
+        "feature_pinning": true,
+        "feature_custom_status": true,
+        "feature_custom_tags": true,
+        "feature_state_counters": true
+    },
+    "default_federate": ${ENABLE_FEDERATION},
+    "default_theme": "light",
+    "roomDirectory": {
+        "servers": [
+            "${DOMAIN}"
+        ]
+    }
 }
 EOF
     
-    log_success "Element Web налаштовано"
+    log_success "Конфігурацію Element створено"
 }
 
 post_installation_setup() {
-    log_step "Пост-інсталяційне налаштування"
+    log_info "Виконання пост-інсталяційних налаштувань..."
     
-    # Generate Element config
-    generate_element_config
+    # Wait for services to start
+    sleep 10
     
-    # Create management script
-    create_management_script
+    # Check if Synapse is running
+    if docker compose -f "${BASE_DIR}/docker-compose.yml" ps synapse | grep -q "Up"; then
+        log_success "Synapse запущено успішно"
+    else
+        log_warning "Synapse може не запуститися. Перевірте логи: docker compose -f ${BASE_DIR}/docker-compose.yml logs synapse"
+    fi
     
-    # Create documentation
-    create_local_documentation
+    # Create control script
+    create_control_script
+    
+    # Copy documentation
+    cp "${SCRIPT_DIR}/README.md" "${BASE_DIR}/docs/" 2>/dev/null || true
+    cp "${SCRIPT_DIR}/docs/"* "${BASE_DIR}/docs/" 2>/dev/null || true
     
     log_success "Пост-інсталяційне налаштування завершено"
 }
 
-create_management_script() {
-    log_info "Створення скрипта управління..."
+create_control_script() {
+    local control_script="${BASE_DIR}/bin/matrix-control.sh"
     
-    cat > "${BASE_DIR}/bin/matrix-control.sh" << 'EOF'
+    cat > "${control_script}" << 'EOF'
 #!/bin/bash
-# Matrix Synapse Control Script
+# Matrix Control Script
 
-MATRIX_DIR="$(dirname "$(dirname "$0")")"
-cd "$MATRIX_DIR"
-
-show_usage() {
-    cat << USAGE
-Matrix Synapse Control Script
-
-Використання: $0 <команда> [параметри]
-
-Команди:
-  start                    Запустити всі сервіси
-  stop                     Зупинити всі сервіси
-  restart                  Перезапустити всі сервіси
-  status                   Показати статус сервісів
-  logs [service]           Показати логи (всіх сервісів або конкретного)
-  update                   Оновити Docker образи
-  health                   Перевірити здоров'я системи
-  backup                   Створити резервну копію
-  user create <username>   Створити нового користувача
-  user list               Показати список користувачів
-
-Приклади:
-  $0 start
-  $0 logs synapse
-  $0 user create admin
-USAGE
-}
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+COMPOSE_FILE="${BASE_DIR}/docker-compose.yml"
 
 case "$1" in
     start)
-        echo "🚀 Запуск Matrix системи..."
-        docker compose up -d
+        echo "Запуск Matrix сервісів..."
+        docker compose -f "${COMPOSE_FILE}" up -d
         ;;
     stop)
-        echo "🛑 Зупинка Matrix системи..."
-        docker compose down
+        echo "Зупинка Matrix сервісів..."
+        docker compose -f "${COMPOSE_FILE}" down
         ;;
     restart)
-        echo "🔄 Перезапуск Matrix системи..."
-        docker compose restart
+        echo "Перезапуск Matrix сервісів..."
+        docker compose -f "${COMPOSE_FILE}" restart
         ;;
     status)
-        echo "📊 Статус Matrix системи:"
-        docker compose ps
+        docker compose -f "${COMPOSE_FILE}" ps
         ;;
     logs)
-        if [ -n "$2" ]; then
-            echo "📋 Логи сервісу $2:"
-            docker compose logs -f "$2"
+        if [[ -n "$2" ]]; then
+            docker compose -f "${COMPOSE_FILE}" logs -f "$2"
         else
-            echo "📋 Логи всіх сервісів:"
-            docker compose logs -f
+            docker compose -f "${COMPOSE_FILE}" logs -f
         fi
         ;;
     update)
-        echo "⬆️ Оновлення Docker образів..."
-        docker compose pull
-        echo "🔄 Перезапуск з новими образами..."
-        docker compose up -d
-        ;;
-    health)
-        echo "🏥 Перевірка здоров'я системи:"
-        echo -n "Synapse API: "
-        if curl -sf http://localhost:8008/_matrix/client/versions > /dev/null; then
-            echo "✅ OK"
-        else
-            echo "❌ Недоступний"
-        fi
-        
-        echo -n "База даних: "
-        if docker compose exec -T postgres pg_isready -U matrix_user > /dev/null 2>&1; then
-            echo "✅ OK"
-        else
-            echo "❌ Недоступна"
-        fi
+        echo "Оновлення Matrix сервісів..."
+        docker compose -f "${COMPOSE_FILE}" pull
+        docker compose -f "${COMPOSE_FILE}" up -d
         ;;
     backup)
-        if [ -f "/DATA/matrix-backups/backup-matrix.sh" ]; then
-            echo "💾 Створення резервної копії..."
-            /DATA/matrix-backups/backup-matrix.sh
-        else
-            echo "❌ Скрипт резервного копіювання не знайдено"
-        fi
+        echo "Створення резервної копії..."
+        "${BASE_DIR}/bin/backup.sh"
         ;;
     user)
         case "$2" in
             create)
-                if [ -z "$3" ]; then
-                    echo "❌ Вкажіть ім'я користувача"
+                if [[ -z "$3" ]]; then
                     echo "Використання: $0 user create <username>"
                     exit 1
                 fi
-                echo "👤 Створення користувача $3..."
-                docker compose exec synapse register_new_matrix_user \
-                    -c /data/homeserver.yaml \
-                    -u "$3" \
-                    -a \
-                    http://localhost:8008
-                ;;
-            list)
-                echo "👥 Список користувачів:"
-                docker compose exec postgres psql -U matrix_user -d matrix_db \
-                    -c "SELECT name, admin, deactivated FROM users ORDER BY name;"
+                echo "Створення користувача $3..."
+                docker compose -f "${COMPOSE_FILE}" exec synapse register_new_matrix_user -u "$3" -a -c /data/homeserver.yaml http://localhost:8008
                 ;;
             *)
-                echo "❌ Невідома команда користувача: $2"
-                echo "Доступні команди: create, list"
+                echo "Доступні команди для користувачів: create"
                 ;;
         esac
         ;;
+    health)
+        echo "Перевірка здоров'я системи..."
+        curl -s http://localhost:8008/_matrix/federation/v1/version || echo "Synapse недоступний"
+        ;;
     *)
-        show_usage
+        echo "Використання: $0 {start|stop|restart|status|logs|update|backup|user|health}"
+        echo ""
+        echo "Команди:"
+        echo "  start    - Запустити всі сервіси"
+        echo "  stop     - Зупинити всі сервіси"
+        echo "  restart  - Перезапустити всі сервіси"
+        echo "  status   - Показати статус сервісів"
+        echo "  logs     - Показати логи (додайте назву сервісу для конкретних логів)"
+        echo "  update   - Оновити всі сервіси"
+        echo "  backup   - Створити резервну копію"
+        echo "  user     - Управління користувачами"
+        echo "  health   - Перевірити здоров'я системи"
         exit 1
         ;;
 esac
 EOF
     
-    chmod +x "${BASE_DIR}/bin/matrix-control.sh"
-    log_success "Скрипт управління створено"
-}
-
-create_local_documentation() {
-    log_info "Створення локальної документації..."
-    
-    cat > "${BASE_DIR}/docs/README.md" << EOF
-# Matrix Synapse Installation
-
-## Доступ до сервісів
-
-- **Matrix Synapse**: http://localhost:8008
-- **Synapse Admin**: http://localhost:8080
-$(if [[ "${INSTALL_ELEMENT}" == "true" ]]; then echo "- **Element Web**: http://localhost:80"; fi)
-$(if [[ "${SETUP_MONITORING}" == "true" ]]; then echo "- **Grafana**: http://localhost:3000 (admin/admin123)"; echo "- **Prometheus**: http://localhost:9090"; fi)
-$(if [[ "${USE_CLOUDFLARE_TUNNEL}" == "true" ]]; then echo "- **Cloudflare Tunnel**: Налаштуйте маршрутизацію в панелі Cloudflare"; fi)
-
-## Управління системою
-
-Використовуйте скрипт управління:
-
-\`\`\`bash
-# Статус системи
-./bin/matrix-control.sh status
-
-# Перезапуск
-./bin/matrix-control.sh restart
-
-# Логи
-./bin/matrix-control.sh logs
-
-# Створення користувача
-./bin/matrix-control.sh user create admin
-\`\`\`
-
-## Створення першого користувача
-
-\`\`\`bash
-cd ${BASE_DIR}
-docker compose exec synapse register_new_matrix_user \\
-    -c /data/homeserver.yaml \\
-    -a \\
-    -u admin \\
-    -p your_password \\
-    http://localhost:8008
-\`\`\`
-
-## Конфігурація
-
-- Домен: ${DOMAIN}
-- Публічна реєстрація: ${ALLOW_PUBLIC_REGISTRATION}
-- Федерація: ${ENABLE_FEDERATION}
-- Element Web: ${INSTALL_ELEMENT}
-- Моніторинг: ${SETUP_MONITORING}
-- Cloudflare Tunnel: ${USE_CLOUDFLARE_TUNNEL}
-EOF
-    
-    log_success "Локальну документацію створено"
+    chmod +x "${control_script}"
 }
 
 get_service_urls() {
-    echo "Matrix Synapse: http://localhost:8008"
-    echo "Synapse Admin: http://localhost:8080"
+    local urls=""
+    
+    urls+="   Matrix Synapse: http://localhost:8008\n"
+    urls+="   Synapse Admin: http://localhost:8080\n"
     
     if [[ "${INSTALL_ELEMENT}" == "true" ]]; then
-        echo "Element Web: http://localhost:80"
+        urls+="   Element Web: http://localhost:80\n"
     fi
     
     if [[ "${SETUP_MONITORING}" == "true" ]]; then
-        echo "Grafana: http://localhost:3000 (admin/admin123)"
-        echo "Prometheus: http://localhost:9090"
+        urls+="   Grafana: http://localhost:3000 (admin/admin123)\n"
+        urls+="   Prometheus: http://localhost:9090\n"
     fi
     
-    if [[ "${USE_CLOUDFLARE_TUNNEL}" == "true" ]]; then
-        echo "Cloudflare Tunnel: Налаштуйте маршрутизацію в панелі Cloudflare"
-    fi
+    echo -e "${urls}"
 }
 
 # Export functions
-export -f generate_synapse_config configure_database configure_registration_and_federation
-export -f generate_element_config post_installation_setup create_management_script
-export -f create_local_documentation get_service_urls
+export -f setup_directory_structure generate_synapse_config generate_element_config post_installation_setup create_control_script get_service_urls
