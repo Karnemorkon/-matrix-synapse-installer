@@ -174,7 +174,7 @@ ask_yes_no() {
             y|yes) echo "true"; return ;;
             n|no) echo "false"; return ;;
             "") echo "${default}"; return ;;
-            *) echo "Будь ласка, введіть 'yes' або 'no'" >&2 ;;
+            *) echo "Будь ласка, введіть 'yes' або 'no'" ;;
         esac
     done
 }
