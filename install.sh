@@ -11,6 +11,18 @@ readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_NAME="Matrix Synapse Installer"
 readonly PROJECT_VERSION="3.0"
 
+# --- Early Configuration Path Setup ---
+# This needs to be done before sourcing modules to ensure consistent paths
+if [[ -n "${SUDO_USER:-}" ]]; then
+    # Script is run with sudo, use the original user's home
+    ACTUAL_USER_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
+    CONFIG_DIR="${ACTUAL_USER_HOME}/.config/matrix-installer"
+else
+    # Script is run directly as root
+    CONFIG_DIR="/root/.config/matrix-installer"
+fi
+readonly CONFIG_FILE="${CONFIG_DIR}/config.conf"
+
 # Source all modules
 source "${SCRIPT_DIR}/lib/logger.sh"
 source "${SCRIPT_DIR}/lib/config.sh"

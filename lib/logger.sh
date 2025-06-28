@@ -9,9 +9,13 @@ if [[ -n "${SUDO_USER}" ]]; then
     # Script is run with sudo, use the original user's home
     ACTUAL_USER_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
     LOG_DIR="${ACTUAL_USER_HOME}/.local/share/matrix-installer/logs"
+    ACTUAL_USER_ID=$(id -u "${SUDO_USER}")
+    ACTUAL_GROUP_ID=$(id -g "${SUDO_USER}")
 else
     # Script is run directly as root or without sudo
     LOG_DIR="/var/log/matrix-installer"
+    ACTUAL_USER_ID=""
+    ACTUAL_GROUP_ID=""
 fi
 
 readonly LOG_FILE="${LOG_DIR}/install-$(date +%Y%m%d-%H%M%S).log"
@@ -31,11 +35,27 @@ init_logger() {
     mkdir -p "${LOG_DIR}"
     
     # If using sudo, set proper ownership
-    if [[ -n "${SUDO_USER}" ]]; then
-        chown -R "${SUDO_USER}:${SUDO_USER}" "$(dirname "${LOG_DIR}")" 2>/dev/null || true
+    if [[ -n "${SUDO_USER}" && -n "${ACTUAL_USER_ID}" && -n "${ACTUAL_GROUP_ID}" ]]; then
+        # Change ownership of the entire log directory structure
+        chown -R "${ACTUAL_USER_ID}:${ACTUAL_GROUP_ID}" "${LOG_DIR}"
+        # Also change ownership of parent directories if they were created
+        local parent_dir="$(dirname "${LOG_DIR}")"
+        if [[ -d "${parent_dir}" ]]; then
+            chown "${ACTUAL_USER_ID}:${ACTUAL_GROUP_ID}" "${parent_dir}" 2>/dev/null || true
+        fi
+        local grandparent_dir="$(dirname "${parent_dir}")"
+        if [[ -d "${grandparent_dir}" ]]; then
+            chown "${ACTUAL_USER_ID}:${ACTUAL_GROUP_ID}" "${grandparent_dir}" 2>/dev/null || true
+        fi
     fi
     
     touch "${LOG_FILE}"
+    
+    # Set proper ownership for the log file
+    if [[ -n "${SUDO_USER}" && -n "${ACTUAL_USER_ID}" && -n "${ACTUAL_GROUP_ID}" ]]; then
+        chown "${ACTUAL_USER_ID}:${ACTUAL_GROUP_ID}" "${LOG_FILE}"
+    fi
+    
     log_info "Ініціалізація системи логування"
     log_info "Файл логу: ${LOG_FILE}"
     

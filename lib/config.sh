@@ -4,8 +4,8 @@
 # ===================================================================================
 
 # --- Configuration Variables ---
-readonly CONFIG_DIR="${HOME}/.config/matrix-installer"
-readonly CONFIG_FILE="${CONFIG_DIR}/config.conf"
+# CONFIG_DIR and CONFIG_FILE are now set in the main script before sourcing modules
+# This ensures consistent paths across all modules
 
 # Default values
 DEFAULT_DOMAIN="matrix.example.com"
@@ -18,6 +18,19 @@ DEFAULT_USE_CLOUDFLARE="false"
 # --- Functions ---
 init_config() {
     mkdir -p "${CONFIG_DIR}"
+    
+    # Set proper ownership if using sudo
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        local actual_user_id=$(id -u "${SUDO_USER}")
+        local actual_group_id=$(id -g "${SUDO_USER}")
+        chown -R "${actual_user_id}:${actual_group_id}" "${CONFIG_DIR}"
+        # Also fix parent directory ownership
+        local parent_dir="$(dirname "${CONFIG_DIR}")"
+        if [[ -d "${parent_dir}" ]]; then
+            chown "${actual_user_id}:${actual_group_id}" "${parent_dir}" 2>/dev/null || true
+        fi
+    fi
+    
     log_info "Ініціалізація конфігурації"
 }
 
@@ -50,6 +63,15 @@ SETUP_BACKUP="${SETUP_BACKUP}"
 USE_CLOUDFLARE_TUNNEL="${USE_CLOUDFLARE_TUNNEL}"
 CLOUDFLARE_TUNNEL_TOKEN="${CLOUDFLARE_TUNNEL_TOKEN:-}"
 EOF
+
+    # Set proper ownership if using sudo
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        local actual_user_id=$(id -u "${SUDO_USER}")
+        local actual_group_id=$(id -g "${SUDO_USER}")
+        chown "${actual_user_id}:${actual_group_id}" "${CONFIG_FILE}"
+        chown -R "${actual_user_id}:${actual_group_id}" "${CONFIG_DIR}"
+    fi
+    
     log_success "Конфігурацію збережено в ${CONFIG_FILE}"
 }
 
@@ -174,7 +196,7 @@ ask_yes_no() {
             y|yes) echo "true"; return ;;
             n|no) echo "false"; return ;;
             "") echo "${default}"; return ;;
-            *) echo "Будь ласка, введіть 'yes' або 'no'" ;;
+            *) echo "Будь ласка, введіть 'yes' або 'no'" >&2 ;;
         esac
     done
 }
