@@ -11,14 +11,14 @@ setup_monitoring_stack() {
     
     log_step "Налаштування системи моніторингу"
     
+    # Create monitoring directories first
+    create_monitoring_directories
+    
     # Create Prometheus configuration
     create_prometheus_config
     
     # Create Grafana datasource
     create_grafana_datasource
-    
-    # Create monitoring directories
-    create_monitoring_directories
     
     # Generate Grafana configuration
     generate_grafana_config
@@ -79,6 +79,9 @@ create_monitoring_directories() {
         "${BASE_DIR}/monitoring/grafana/data"
         "${BASE_DIR}/monitoring/grafana/dashboards"
         "${BASE_DIR}/monitoring/grafana/datasources"
+        "${BASE_DIR}/monitoring/grafana/provisioning"
+        "${BASE_DIR}/monitoring/grafana/provisioning/dashboards"
+        "${BASE_DIR}/monitoring/grafana/provisioning/datasources"
     )
     
     for dir in "${directories[@]}"; do
