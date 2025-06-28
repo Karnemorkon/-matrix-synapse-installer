@@ -38,7 +38,8 @@ main() {
     if [[ -f "${CONFIG_FILE}" ]]; then
         log_info "Знайдено існуючу конфігурацію: ${CONFIG_FILE}"
         
-        if ask_yes_no "Використати існуючу конфігурацію?"; then
+        USE_EXISTING_CONFIG=$(ask_yes_no "Використати існуючу конфігурацію?" "false")
+        if [[ "${USE_EXISTING_CONFIG}" == "true" ]]; then
             log_info "Використовую існуючу конфігурацію"
             load_config
         else
@@ -56,7 +57,8 @@ main() {
     # Show configuration summary
     show_config_summary
     
-    if ! ask_yes_no "Продовжити встановлення?"; then
+    CONTINUE_INSTALL=$(ask_yes_no "Продовжити встановлення?" "false")
+    if [[ "${CONTINUE_INSTALL}" != "true" ]]; then
         log_info "Встановлення скасовано користувачем"
         exit 0
     fi
