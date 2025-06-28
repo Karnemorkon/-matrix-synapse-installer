@@ -26,7 +26,7 @@ init_logger() {
 
 log_raw() {
     local message="$1"
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - ${message}" >> "${LOG_FILE}"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - ${message}" >> "${LOG_FILE}" 2>/dev/null || true
 }
 
 log_info() {
@@ -67,5 +67,17 @@ log_debug() {
     log_raw "DEBUG: ${message}"
 }
 
+log_command() {
+    local command="$1"
+    log_debug "Executing: ${command}"
+    if eval "${command}" >> "${LOG_FILE}" 2>&1; then
+        log_debug "Command succeeded: ${command}"
+        return 0
+    else
+        log_error "Command failed: ${command}"
+        return 1
+    fi
+}
+
 # Export functions
-export -f init_logger log_raw log_info log_success log_warning log_error log_step log_debug
+export -f init_logger log_raw log_info log_success log_warning log_error log_step log_debug log_command

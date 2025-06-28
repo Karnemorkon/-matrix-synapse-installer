@@ -14,11 +14,17 @@ install_docker_dependencies() {
     
     # Update package lists
     log_info "Оновлення списків пакетів..."
-    apt update -y &>> "${LOG_FILE}"
+    if ! log_command "apt update -y"; then
+        log_error "Помилка оновлення пакетів"
+        return 1
+    fi
     
     # Install basic packages
     log_info "Встановлення базових пакетів..."
-    apt install -y curl apt-transport-https ca-certificates gnupg lsb-release &>> "${LOG_FILE}"
+    if ! log_command "apt install -y curl apt-transport-https ca-certificates gnupg lsb-release"; then
+        log_error "Помилка встановлення базових пакетів"
+        return 1
+    fi
     
     # Install Docker
     if ! systemctl is-active --quiet docker; then
@@ -42,8 +48,15 @@ install_docker_dependencies() {
         fi
         
         # Install Docker packages
-        apt update -y &>> "${LOG_FILE}"
-        apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin &>> "${LOG_FILE}"
+        if ! log_command "apt update -y"; then
+            log_error "Помилка оновлення після додавання репозиторію Docker"
+            return 1
+        fi
+        
+        if ! log_command "apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"; then
+            log_error "Помилка встановлення Docker"
+            return 1
+        fi
         
         # Start and enable Docker
         systemctl start docker
@@ -55,7 +68,7 @@ install_docker_dependencies() {
     fi
     
     # Verify Docker Compose
-    if docker compose version &>> "${LOG_FILE}"; then
+    if docker compose version >> "${LOG_FILE}" 2>&1; then
         log_success "Docker Compose доступний"
     else
         log_error "Docker Compose недоступний"
@@ -231,13 +244,23 @@ start_matrix_services() {
     
     cd "${BASE_DIR}"
     
-    # Pull images
+    # Pull images with progress
     log_info "Завантаження Docker образів..."
-    docker compose pull &>> "${LOG_FILE}"
+    log_info "Це може зайняти кілька хвилин залежно від швидкості інтернету..."
+    
+    # Show progress for docker pull
+    if ! docker compose pull 2>&1 | tee -a "${LOG_FILE}"; then
+        log_error "Помилка завантаження Docker образів"
+        log_info "Перевірте підключення до інтернету та спробуйте ще раз"
+        return 1
+    fi
     
     # Start services
     log_info "Запуск сервісів..."
-    docker compose up -d &>> "${LOG_FILE}"
+    if ! docker compose up -d 2>&1 | tee -a "${LOG_FILE}"; then
+        log_error "Помилка запуску сервісів"
+        return 1
+    fi
     
     # Wait for Synapse to be ready
     log_info "Очікування запуску Synapse..."
@@ -250,14 +273,14 @@ start_matrix_services() {
             return 0
         fi
         
-        log_info "Спроба ${attempt}/${max_attempts}..."
+        log_info "Спроба ${attempt}/${max_attempts}... (очікування 10 секунд)"
         sleep 10
         ((attempt++))
     done
     
     log_error "Matrix Synapse не запустився після ${max_attempts} спроб"
-    log_info "Перевірте логи: docker compose logs synapse"
-    exit 1
+    log_info "Перевірте логи: cd ${BASE_DIR} && docker compose logs synapse"
+    return 1
 }
 
 # Export functions
