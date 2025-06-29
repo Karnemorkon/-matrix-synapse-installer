@@ -21,6 +21,15 @@ validate_system_requirements() {
         exit 1
     fi
     
+    # Check kernel version
+    local kernel_version=$(uname -r | cut -d. -f1,2)
+    local min_kernel="4.19"
+    if [[ "$(printf '%s\n' "$min_kernel" "$kernel_version" | sort -V | head -n1)" != "$min_kernel" ]]; then
+        log_warning "Рекомендується ядро версії ${min_kernel}+ (поточна: ${kernel_version})"
+    else
+        log_success "Версія ядра підтримується (${kernel_version})"
+    fi
+    
     # Check RAM
     local total_ram_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
     local total_ram_gb=$((total_ram_kb / 1024 / 1024))
@@ -57,6 +66,20 @@ validate_system_requirements() {
         log_warning "Непідтримувана архітектура: $arch"
     else
         log_success "Архітектура процесора підтримується"
+    fi
+    
+    # Check Docker availability
+    if command -v docker &> /dev/null; then
+        log_success "Docker вже встановлено"
+    else
+        log_info "Docker буде встановлено під час інсталяції"
+    fi
+    
+    # Check network connectivity
+    if ping -c 1 8.8.8.8 &> /dev/null; then
+        log_success "Мережеве з'єднання працює"
+    else
+        log_warning "Проблеми з мережевим з'єднанням"
     fi
     
     log_success "Перевірка системних вимог завершена"

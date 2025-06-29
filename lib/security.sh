@@ -164,48 +164,85 @@ setup_firewall() {
         apt install -y ufw &>> "${LOG_FILE}"
     fi
     
-    # Configure UFW
+    # Configure UFW with more secure defaults
     ufw --force reset &>> "${LOG_FILE}"
     ufw default deny incoming &>> "${LOG_FILE}"
     ufw default allow outgoing &>> "${LOG_FILE}"
     
-    # Allow SSH
+    # Allow SSH (with rate limiting)
     ufw allow ssh &>> "${LOG_FILE}"
+    ufw limit ssh &>> "${LOG_FILE}"
     
-    # Allow Matrix ports
-    ufw allow 8008/tcp &>> "${LOG_FILE}"  # Synapse HTTP
-    ufw allow 8448/tcp &>> "${LOG_FILE}"  # Synapse HTTPS
+    # Allow Matrix ports with specific rules
+    ufw allow from any to any port 8008 proto tcp comment "Matrix Synapse HTTP" &>> "${LOG_FILE}"
+    ufw allow from any to any port 8448 proto tcp comment "Matrix Synapse HTTPS" &>> "${LOG_FILE}"
     
     # Allow web ports if Element is installed
     if [[ "${INSTALL_ELEMENT:-false}" == "true" ]]; then
-        ufw allow 80/tcp &>> "${LOG_FILE}"
-        ufw allow 443/tcp &>> "${LOG_FILE}"
+        ufw allow from any to any port 80 proto tcp comment "HTTP" &>> "${LOG_FILE}"
+        ufw allow from any to any port 443 proto tcp comment "HTTPS" &>> "${LOG_FILE}"
     fi
     
-    # Allow monitoring ports if enabled
+    # Allow monitoring ports if enabled (restrict to localhost)
     if [[ "${SETUP_MONITORING:-false}" == "true" ]]; then
-        ufw allow 3000/tcp &>> "${LOG_FILE}"  # Grafana
-        ufw allow 9090/tcp &>> "${LOG_FILE}"  # Prometheus
+        ufw allow from 127.0.0.1 to any port 3000 proto tcp comment "Grafana (localhost only)" &>> "${LOG_FILE}"
+        ufw allow from 127.0.0.1 to any port 9090 proto tcp comment "Prometheus (localhost only)" &>> "${LOG_FILE}"
     fi
     
     # Enable UFW
     ufw --force enable &>> "${LOG_FILE}"
     
-    log_success "Файрвол налаштовано"
+    log_success "Файрвол налаштовано з підвищеною безпекою"
 }
 
 secure_file_permissions() {
     log_info "Налаштування прав доступу до файлів..."
     
     # Secure Synapse configuration
-    chown -R 991:991 "${BASE_DIR}/synapse/"
-    chmod 700 "${BASE_DIR}/synapse/config"
-    chmod 600 "${BASE_DIR}/synapse/config"/*.yaml 2>/dev/null || true
+    if [[ -d "${BASE_DIR}/synapse" ]]; then
+        chown -R 991:991 "${BASE_DIR}/synapse"
+        chmod -R 750 "${BASE_DIR}/synapse"
+        find "${BASE_DIR}/synapse" -type f -name "*.yaml" -exec chmod 640 {} \;
+    fi
     
-    # Secure environment file
-    chmod 600 "${BASE_DIR}/.env" 2>/dev/null || true
+    # Secure database files
+    if [[ -d "${BASE_DIR}/data/postgres" ]]; then
+        chown -R 999:999 "${BASE_DIR}/data/postgres"
+        chmod -R 750 "${BASE_DIR}/data/postgres"
+    fi
     
-    log_success "Права доступу налаштовано"
+    # Secure monitoring files
+    if [[ -d "${BASE_DIR}/monitoring" ]]; then
+        chown -R 472:472 "${BASE_DIR}/monitoring/grafana"
+        chown -R 65534:65534 "${BASE_DIR}/monitoring/prometheus"
+        chmod -R 750 "${BASE_DIR}/monitoring"
+    fi
+    
+    log_success "Права доступу до файлів налаштовано"
+}
+
+validate_ssl_certificate() {
+    local domain="$1"
+    local cert_path="/etc/letsencrypt/live/${domain}/fullchain.pem"
+    
+    if [[ ! -f "${cert_path}" ]]; then
+        log_error "SSL сертифікат не знайдено: ${cert_path}"
+        return 1
+    fi
+    
+    # Check certificate expiration
+    local expiry_date=$(openssl x509 -enddate -noout -in "${cert_path}" | cut -d= -f2)
+    local expiry_timestamp=$(date -d "${expiry_date}" +%s)
+    local current_timestamp=$(date +%s)
+    local days_until_expiry=$(( (expiry_timestamp - current_timestamp) / 86400 ))
+    
+    if [[ ${days_until_expiry} -lt 30 ]]; then
+        log_warning "SSL сертифікат закінчується через ${days_until_expiry} днів"
+        return 1
+    fi
+    
+    log_success "SSL сертифікат валідний (закінчується через ${days_until_expiry} днів)"
+    return 0
 }
 
 create_security_documentation() {
@@ -228,4 +265,4 @@ EOF
 }
 
 # Export functions
-export -f setup_security setup_firewall secure_file_permissions setup_letsencrypt_ssl setup_ssl_renewal setup_nginx_proxy create_security_documentation
+export -f setup_security setup_firewall secure_file_permissions setup_letsencrypt_ssl setup_ssl_renewal setup_nginx_proxy create_security_documentation validate_ssl_certificate

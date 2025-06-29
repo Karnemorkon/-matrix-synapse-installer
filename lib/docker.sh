@@ -242,6 +242,82 @@ POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 CLOUDFLARE_TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
 EOF
     
+    # Add bridges if enabled
+    if [[ "${INSTALL_BRIDGES}" == "true" ]]; then
+        # Signal Bridge
+        if [[ "${INSTALL_SIGNAL_BRIDGE:-false}" == "true" ]]; then
+            cat >> "${compose_file}" << EOF
+
+  signal-bridge:
+    image: dock.mau.dev/mautrix/signal:latest
+    restart: unless-stopped
+    depends_on:
+      synapse:
+        condition: service_healthy
+    volumes:
+      - ./bridges/signal/config:/data
+      - ./bridges/signal/data:/signald/data
+    environment:
+      - MAUTRIX_SIGNAL_CONFIG_PATH=/data/config.yaml
+    ports:
+      - "29328:29328"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:29328/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+EOF
+        fi
+        
+        # WhatsApp Bridge
+        if [[ "${INSTALL_WHATSAPP_BRIDGE:-false}" == "true" ]]; then
+            cat >> "${compose_file}" << EOF
+
+  whatsapp-bridge:
+    image: dock.mau.dev/mautrix/whatsapp:latest
+    restart: unless-stopped
+    depends_on:
+      synapse:
+        condition: service_healthy
+    volumes:
+      - ./bridges/whatsapp/config:/data
+    environment:
+      - MAUTRIX_WHATSAPP_CONFIG_PATH=/data/config.yaml
+    ports:
+      - "29318:29318"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:29318/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+EOF
+        fi
+        
+        # Discord Bridge
+        if [[ "${INSTALL_DISCORD_BRIDGE:-false}" == "true" ]]; then
+            cat >> "${compose_file}" << EOF
+
+  discord-bridge:
+    image: dock.mau.dev/mautrix/discord:latest
+    restart: unless-stopped
+    depends_on:
+      synapse:
+        condition: service_healthy
+    volumes:
+      - ./bridges/discord/config:/data
+    environment:
+      - MAUTRIX_DISCORD_CONFIG_PATH=/data/config.yaml
+    ports:
+      - "29334:29334"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:29334/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+EOF
+        fi
+    fi
+    
     log_success "Docker Compose конфігурацію створено"
 }
 

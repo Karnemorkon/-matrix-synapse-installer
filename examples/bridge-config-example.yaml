@@ -1,0 +1,111 @@
+# Приклад конфігурації для Matrix мостів
+# Скопіюйте цей файл в bridges/<bridge-name>/config/config.yaml
+# та налаштуйте відповідно до ваших потреб
+
+# ===================================================================================
+# Загальна конфігурація моста
+# ===================================================================================
+
+# Налаштування домашнього сервера
+homeserver:
+  # Адреса Synapse сервера
+  address: http://synapse:8008
+  # Домен вашого Matrix сервера
+  domain: matrix.example.com
+
+# Налаштування appservice
+appservice:
+  # Адреса моста
+  address: http://bridge-name:29328
+  # Хост для прослуховування
+  hostname: 0.0.0.0
+  # Порт моста
+  port: 29328
+  # База даних (SQLite або PostgreSQL)
+  database: sqlite:///data/bridge.db
+  # Унікальний ID моста
+  id: bridge_name
+  # Ім'я користувача бота
+  bot_username: bridgebot
+  # Відображуване ім'я бота
+  bot_displayname: Bridge Bot
+  # Аватар бота (MXC URL)
+  bot_avatar: mxc://example.com/bot_avatar
+  # Токен appservice (автоматично генерується)
+  as_token: "your_as_token_here"
+  # Токен homeserver (автоматично генерується)
+  hs_token: "your_hs_token_here"
+
+# Налаштування моста
+bridge:
+  # Шаблон імені користувача
+  username_template: "bridge_{userid}"
+  # Шаблон відображуваного імені
+  displayname_template: "{displayname} (Bridge)"
+  # Префікс команд
+  command_prefix: "!bridge"
+  
+  # Права доступу
+  permissions:
+    "matrix.example.com": user
+    "@admin:matrix.example.com": admin
+
+# ===================================================================================
+# Специфічні налаштування для різних мостів
+# ===================================================================================
+
+# Signal Bridge
+signal:
+  # Шлях до socket signald
+  socket_path: /signald/signald.sock
+  # Директорія для вкладень
+  outgoing_attachment_dir: /signald/attachments
+  # Директорія для аватарів
+  avatar_dir: /signald/avatars
+  # Директорія для даних
+  data_dir: /signald/data
+
+# WhatsApp Bridge
+whatsapp:
+  # Назва ОС
+  os_name: Mautrix-WhatsApp bridge
+  # Назва браузера
+  browser_name: unknown
+
+# Discord Bridge
+discord:
+  # Токен бота Discord
+  bot_token: "your_discord_bot_token"
+  # ID додатку Discord
+  application_id: "your_discord_application_id"
+
+# ===================================================================================
+# Налаштування логування
+# ===================================================================================
+
+logging:
+  version: 1
+  formatters:
+    colored:
+      (): mautrix.util.ColorFormatter
+      format: "[%(asctime)s] [%(levelname)s@%(name)s] %(message)s"
+    normal:
+      format: "[%(asctime)s] [%(levelname)s@%(name)s] %(message)s"
+  handlers:
+    file:
+      class: logging.handlers.RotatingFileHandler
+      formatter: normal
+      filename: /data/bridge.log
+      maxBytes: 10485760
+      backupCount: 10
+    console:
+      class: logging.StreamHandler
+      formatter: colored
+  loggers:
+    mau:
+      level: DEBUG
+    aiohttp:
+      level: INFO
+  root:
+    level: DEBUG
+    handlers: [file, console] 

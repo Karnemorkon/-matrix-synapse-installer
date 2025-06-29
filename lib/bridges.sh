@@ -36,23 +36,59 @@ generate_bridge_configs() {
     
     log_step "Налаштування мостів Matrix"
     
-    # This is a placeholder for bridge configuration
-    # In a full implementation, this would configure Mautrix bridges
-    log_info "Конфігурація мостів буде додана в майбутніх версіях"
+    # Створюємо директорію для мостів
+    mkdir -p "${BASE_DIR}/bridges"
     
-    log_success "Мости налаштовано"
+    # Лічильник встановлених мостів
+    local bridges_installed=0
+    
+    # Signal Bridge
+    if [[ "${INSTALL_SIGNAL_BRIDGE:-false}" == "true" ]]; then
+        log_info "Налаштування Signal Bridge..."
+        setup_bridge "signal"
+        bridges_installed=$((bridges_installed + 1))
+    fi
+    
+    # WhatsApp Bridge
+    if [[ "${INSTALL_WHATSAPP_BRIDGE:-false}" == "true" ]]; then
+        log_info "Налаштування WhatsApp Bridge..."
+        setup_bridge "whatsapp"
+        bridges_installed=$((bridges_installed + 1))
+    fi
+    
+    # Discord Bridge
+    if [[ "${INSTALL_DISCORD_BRIDGE:-false}" == "true" ]]; then
+        log_info "Налаштування Discord Bridge..."
+        setup_bridge "discord"
+        bridges_installed=$((bridges_installed + 1))
+    fi
+    
+    if [[ $bridges_installed -gt 0 ]]; then
+        log_success "Налаштовано $bridges_installed мостів"
+        
+        # Створюємо загальний файл реєстрації мостів для Synapse
+        create_bridge_registration_file
+        
+        log_info "Для завершення налаштування мостів потрібно:"
+        log_info "1. Налаштувати кожен міст окремо після встановлення"
+        log_info "2. Додати реєстраційні файли до конфігурації Synapse"
+        log_info "3. Перезапустити Synapse після налаштування мостів"
+    else
+        log_warning "Не вибрано жодного моста для встановлення"
+    fi
 }
 
 setup_bridge() {
     local bridge_name="$1"
-    local bridge_dir="$BASE_DIR/${bridge_name}-bridge"
+    local bridge_dir="${BASE_DIR}/bridges/${bridge_name}"
     local config_dir="$bridge_dir/config"
+    local data_dir="$bridge_dir/data"
     
     log_info "Налаштування моста: $bridge_name"
     
     # Create directories
     mkdir -p "$config_dir"
-    mkdir -p "$bridge_dir/data"
+    mkdir -p "$data_dir"
     
     # Generate bridge configuration
     generate_bridge_config "$bridge_name" "$config_dir"
@@ -60,7 +96,14 @@ setup_bridge() {
     # Generate registration file
     generate_registration_file "$bridge_name" "$config_dir"
     
-    log_success "Міст $bridge_name налаштовано"
+    # Create documentation
+    create_bridge_documentation "$bridge_name" "$bridge_dir"
+    
+    # Set proper permissions
+    chown -R 991:991 "$bridge_dir" 2>/dev/null || true
+    chmod -R 750 "$bridge_dir"
+    
+    log_success "Міст $bridge_name налаштовано в $bridge_dir"
 }
 
 generate_bridge_config() {
@@ -526,63 +569,147 @@ generate_token() {
 }
 
 create_bridge_documentation() {
-    if [[ "${CONFIG[INSTALL_BRIDGES]}" != "true" ]]; then
-        return 0
-    fi
+    local bridge_name="$1"
+    local bridge_dir="$2"
     
-    local base_dir="${CONFIG[BASE_DIR]}"
-    local docs_dir="${base_dir}/docs"
+    local doc_file="$bridge_dir/README.md"
     
-    cat > "${docs_dir}/BRIDGES.md" << 'EOF'
-# Налаштування мостів Matrix
+    case $bridge_name in
+        "signal")
+            cat > "$doc_file" << EOF
+# Signal Bridge
 
-## Загальна інформація
+## Опис
+Міст для інтеграції Matrix з Signal месенджером.
 
-Мости дозволяють інтегрувати Matrix з іншими месенджерами. Після встановлення потрібно налаштувати кожен міст окремо.
+## Налаштування
+1. Встановіть Signal на ваш телефон
+2. Запустіть signald: \`docker run -d --name signald -v /path/to/signal:/signald finn/signald\`
+3. Зареєструйте пристрій: \`docker exec signald signald-cli -a +YOUR_PHONE_NUMBER register\`
+4. Налаштуйте конфігурацію в \`config/config.yaml\`
+5. Запустіть міст: \`docker run -d --name mautrix-signal -v /path/to/config:/data dock.mau.dev/mautrix/signal\`
 
-## Кроки налаштування
+## Команди
+- \`!signal help\` - Показати допомогу
+- \`!signal login\` - Увійти в Signal
+- \`!signal logout\` - Вийти з Signal
 
-1. Створіть користувача Matrix
-2. Увійдіть в Element Web або інший клієнт
-3. Знайдіть бота моста та почніть діалог
-4. Слідуйте інструкціям для підключення
+## Документація
+https://docs.mau.fi/bridges/python/signal/
+EOF
+            ;;
+        "whatsapp")
+            cat > "$doc_file" << EOF
+# WhatsApp Bridge
 
-## Команди мостів
+## Опис
+Міст для інтеграції Matrix з WhatsApp.
 
-### Signal Bridge
-- `!signal help` - показати допомогу
-- `!signal login` - увійти в Signal
-- `!signal logout` - вийти з Signal
+## Налаштування
+1. Відскануйте QR-код з вашого телефону
+2. Налаштуйте конфігурацію в \`config/config.yaml\`
+3. Запустіть міст: \`docker run -d --name mautrix-whatsapp -v /path/to/config:/data dock.mau.dev/mautrix/whatsapp\`
 
-### WhatsApp Bridge
-- `!wa help` - показати допомогу
-- `!wa login` - увійти в WhatsApp
-- `!wa logout` - вийти з WhatsApp
+## Команди
+- \`!wa help\` - Показати допомогу
+- \`!wa login\` - Увійти в WhatsApp
+- \`!wa logout\` - Вийти з WhatsApp
 
-### Telegram Bridge
-- `!tg help` - показати допомогу
-- `!tg login` - увійти в Telegram
-- `!tg logout` - вийти з Telegram
+## Документація
+https://docs.mau.fi/bridges/python/whatsapp/
+EOF
+            ;;
+        "discord")
+            cat > "$doc_file" << EOF
+# Discord Bridge
 
-### Discord Bridge
-- `!discord help` - показати допомогу
-- `!discord login` - увійти в Discord
-- `!discord logout` - вийти з Discord
+## Опис
+Міст для інтеграції Matrix з Discord.
 
-## Усунення проблем
+## Налаштування
+1. Створіть Discord бота на https://discord.com/developers/applications
+2. Налаштуйте конфігурацію в \`config/config.yaml\`
+3. Запустіть міст: \`docker run -d --name mautrix-discord -v /path/to/config:/data dock.mau.dev/mautrix/discord\`
 
-Якщо міст не працює:
+## Команди
+- \`!discord help\` - Показати допомогу
+- \`!discord login\` - Увійти в Discord
+- \`!discord logout\` - Вийти з Discord
 
-1. Перевірте логи: `./bin/matrix-control.sh logs <bridge-name>-bridge`
-2. Перезапустіть міст: `docker compose restart <bridge-name>-bridge`
-3. Перевірте конфігурацію в `<bridge-name>-bridge/config/config.yaml`
+## Документація
+https://docs.mau.fi/bridges/python/discord/
+EOF
+            ;;
+        *)
+            cat > "$doc_file" << EOF
+# $bridge_name Bridge
 
-## Додаткова інформація
+## Опис
+Міст для інтеграції Matrix з $bridge_name.
 
-Детальну документацію можна знайти на: https://docs.mau.fi/
+## Налаштування
+1. Налаштуйте конфігурацію в \`config/config.yaml\`
+2. Запустіть міст відповідно до документації
+
+## Документація
+Перевірте офіційну документацію для детальних інструкцій.
+EOF
+            ;;
+    esac
+    
+    log_info "Документація створена: $doc_file"
+}
+
+create_bridge_registration_file() {
+    log_info "Створення загального файлу реєстрації мостів..."
+    
+    local registration_file="${BASE_DIR}/bridges/bridges-registration.yaml"
+    
+    cat > "${registration_file}" << EOF
+# Matrix Bridges Registration File
+# Generated on $(date)
+# This file contains registration information for all configured bridges
+
+# Add this to your Synapse homeserver.yaml:
+# app_service_config_files:
+#   - /path/to/bridges/bridges-registration.yaml
+
+# Bridge registrations will be added here during bridge setup
 EOF
     
-    log_success "Документацію мостів створено"
+    # Додаємо реєстрації для кожного встановленого моста
+    if [[ "${INSTALL_SIGNAL_BRIDGE:-false}" == "true" ]]; then
+        cat >> "${registration_file}" << EOF
+
+# Signal Bridge Registration
+# File: ${BASE_DIR}/bridges/signal/registration.yaml
+# Add this line to app_service_config_files in homeserver.yaml:
+#   - ${BASE_DIR}/bridges/signal/registration.yaml
+EOF
+    fi
+    
+    if [[ "${INSTALL_WHATSAPP_BRIDGE:-false}" == "true" ]]; then
+        cat >> "${registration_file}" << EOF
+
+# WhatsApp Bridge Registration
+# File: ${BASE_DIR}/bridges/whatsapp/registration.yaml
+# Add this line to app_service_config_files in homeserver.yaml:
+#   - ${BASE_DIR}/bridges/whatsapp/registration.yaml
+EOF
+    fi
+    
+    if [[ "${INSTALL_DISCORD_BRIDGE:-false}" == "true" ]]; then
+        cat >> "${registration_file}" << EOF
+
+# Discord Bridge Registration
+# File: ${BASE_DIR}/bridges/discord/registration.yaml
+# Add this line to app_service_config_files in homeserver.yaml:
+#   - ${BASE_DIR}/bridges/discord/registration.yaml
+EOF
+    fi
+    
+    log_success "Файл реєстрації мостів створено: ${registration_file}"
+    log_info "Додайте шляхи до реєстраційних файлів у homeserver.yaml після налаштування мостів"
 }
 
 # Export functions
