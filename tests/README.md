@@ -142,24 +142,6 @@ nslookup google.com
 
 ## 🔄 Неперервна інтеграція
 
-### GitHub Actions
-
-```yaml
-# .github/workflows/test.yml
-name: Test Matrix Installer
-
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Run tests
-        run: |
-          sudo ./tests/test-installation.sh
-```
-
 ### Локальне тестування
 
 ```bash
@@ -190,6 +172,39 @@ sudo ./tests/cleanup.sh
 - [Matrix Synapse Documentation](https://matrix-org.github.io/synapse/)
 - [Docker Compose Documentation](https://docs.docker.com/compose/)
 - [Bash Testing Best Practices](https://github.com/kward/shunit2)
+
+## 🧪 Тестування залежностей
+
+### Перевірка залежностей
+```bash
+# Запуск тесту залежностей
+./tests/test-dependencies.sh
+
+# Приклад виводу
+🧪 Тест залежностей Matrix Synapse Installer
+==============================================
+[INFO] Перевірка всіх команд...
+[SUCCESS] curl - доступний
+[SUCCESS] wget - доступний
+[SUCCESS] docker - доступний
+...
+[INFO] Перевірка Python пакетів...
+[SUCCESS] Python пакет flask - встановлено
+[SUCCESS] Python пакет flask-cors - встановлено
+...
+==============================================
+📊 Результати тестування:
+   Пройдено тестів: 2/2
+   Успішність: 100%
+[SUCCESS] Всі тести пройдено успішно! ✅
+```
+
+### Що перевіряється
+- **Системні команди:** curl, wget, git, docker, nginx, ufw, fail2ban, certbot
+- **Python пакети:** flask, flask-cors, pyyaml, requests, psutil, docker
+- **Версії програм:** Python 3.8+, Docker 20.10+
+- **Системні ресурси:** RAM, дисковий простір
+- **Мережеве з'єднання:** доступність зовнішніх серверів
 
 ---
 

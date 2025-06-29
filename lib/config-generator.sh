@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # ===================================================================================
-# Configuration Generator Module
+# Модуль Генератора Конфігурації
 # ===================================================================================
 
-# Generate Synapse configuration
+# Генеруємо конфігурацію Synapse
 generate_synapse_config() {
     local config_dir="$1"
     local domain="$2"
@@ -18,8 +18,8 @@ generate_synapse_config() {
     mkdir -p "$config_dir"
     
     cat > "${config_dir}/homeserver.yaml" << EOF
-# Matrix Synapse Homeserver Configuration
-# Generated on $(date)
+# Конфігурація Matrix Synapse Homeserver
+# Згенеровано $(date)
 
 server_name: "${domain}"
 pid_file: /data/homeserver.pid
@@ -49,19 +49,19 @@ report_stats: false
 macaroon_secret_key: "$(openssl rand -base64 32)"
 form_secret: "$(openssl rand -base64 32)"
 
-# Federation settings
+# Налаштування федерації
 federation_domain_whitelist:
   - "${domain}"
 
-# Registration settings
+# Налаштування реєстрації
 enable_registration: ${allow_public_registration}
 enable_registration_without_verification: false
 
-# Security settings
+# Налаштування безпеки
 trusted_key_servers:
   - server_name: "matrix.org"
 
-# Rate limiting
+# Обмеження швидкості
 rc_message:
   per_second: 0.2
   burst_count: 10
@@ -81,33 +81,33 @@ rc_login:
     per_second: 0.1
     burst_count: 3
 
-# Content repository
+# Репозиторій контенту
 max_upload_size: "50M"
 max_image_pixels: "32M"
 
-# User directory
+# Каталог користувачів
 user_directory_search_all_users: false
 
-# Room settings
+# Налаштування кімнат
 room_invite_state_types:
   - "m.room.join_rules"
   - "m.room.power_levels"
   - "m.room.visibility"
 
-# Retention settings
+# Налаштування збереження
 retention:
   enabled: true
   default_policy:
     min_lifetime: 1d
     max_lifetime: 1y
 
-# Experimental features
+# Експериментальні функції
 experimental_features:
   msc3266_enabled: true
   msc2409_enabled: true
 EOF
 
-    # Create log configuration
+    # Створюємо конфігурацію логування
     cat > "${config_dir}/log.yaml" << EOF
 version: 1
 formatters:
@@ -139,10 +139,10 @@ root:
   handlers: [console, file]
 EOF
 
-    log_success "Конфігурація Synapse створена"
+    log_success "Конфігурацію Synapse створено"
 }
 
-# Generate bridge configurations
+# Генеруємо конфігурації мостів
 generate_bridge_configs() {
     local bridges_dir="$1"
     local domain="$2"
@@ -167,7 +167,7 @@ generate_bridge_configs() {
         generate_discord_config "$bridges_dir/discord" "$domain"
     fi
     
-    log_success "Конфігурації мостів створені"
+    log_success "Конфігурації мостів створено"
 }
 
 generate_signal_config() {
@@ -177,8 +177,8 @@ generate_signal_config() {
     mkdir -p "$bridge_dir/config"
     
     cat > "$bridge_dir/config/config.yaml" << EOF
-# Signal Bridge Configuration
-# Generated on $(date)
+# Конфігурація Signal Bridge
+# Згенеровано $(date)
 
 homeserver:
   address: http://synapse:8008

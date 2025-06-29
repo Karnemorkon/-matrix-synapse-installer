@@ -212,8 +212,8 @@ create_system_dashboard() {
 {
   "dashboard": {
     "id": null,
-    "title": "System Metrics",
-    "tags": ["system", "node"],
+    "title": "System Resources",
+    "tags": ["system", "resources"],
     "timezone": "browser",
     "panels": [
       {
@@ -222,16 +222,9 @@ create_system_dashboard() {
         "type": "graph",
         "targets": [
           {
-            "expr": "100 - (avg by(instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+            "expr": "100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
             "refId": "A",
-            "legendFormat": "CPU Usage %"
-          }
-        ],
-        "yAxes": [
-          {
-            "max": 100,
-            "min": 0,
-            "unit": "percent"
+            "legendFormat": "CPU %"
           }
         ],
         "gridPos": {
@@ -239,7 +232,14 @@ create_system_dashboard() {
           "w": 12,
           "x": 0,
           "y": 0
-        }
+        },
+        "yAxes": [
+          {
+            "label": "CPU %",
+            "min": 0,
+            "max": 100
+          }
+        ]
       },
       {
         "id": 2,
@@ -249,14 +249,7 @@ create_system_dashboard() {
           {
             "expr": "(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100",
             "refId": "A",
-            "legendFormat": "Memory Usage %"
-          }
-        ],
-        "yAxes": [
-          {
-            "max": 100,
-            "min": 0,
-            "unit": "percent"
+            "legendFormat": "Memory %"
           }
         ],
         "gridPos": {
@@ -264,6 +257,61 @@ create_system_dashboard() {
           "w": 12,
           "x": 12,
           "y": 0
+        },
+        "yAxes": [
+          {
+            "label": "Memory %",
+            "min": 0,
+            "max": 100
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Disk Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "(node_filesystem_size_bytes - node_filesystem_free_bytes) / node_filesystem_size_bytes * 100",
+            "refId": "A",
+            "legendFormat": "Disk %"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 8
+        },
+        "yAxes": [
+          {
+            "label": "Disk %",
+            "min": 0,
+            "max": 100
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Network Traffic",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(node_network_receive_bytes_total[5m])",
+            "refId": "A",
+            "legendFormat": "Receive"
+          },
+          {
+            "expr": "rate(node_network_transmit_bytes_total[5m])",
+            "refId": "B",
+            "legendFormat": "Transmit"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 8
         }
       }
     ],
@@ -414,5 +462,217 @@ add_monitoring_services() {
 EOF
 }
 
+# Створення алертів для Grafana
+create_grafana_alerts() {
+    log_info "Створення алертів Grafana"
+    
+    local alerts_dir="${BASE_DIR}/monitoring/grafana/alerts"
+    mkdir -p "$alerts_dir"
+    
+    # Алерт для високого навантаження CPU
+    cat > "$alerts_dir/cpu_alert.json" << 'EOF'
+{
+  "alert": {
+    "name": "High CPU Usage",
+    "message": "CPU usage is above 80% for more than 5 minutes",
+    "executionErrorState": "keep_state",
+    "for": "5m",
+    "frequency": "1m",
+    "handler": 1,
+    "severity": "warning"
+  },
+  "conditions": [
+    {
+      "type": "query",
+      "query": {
+        "params": [
+          "A",
+          "5m",
+          "now"
+        ]
+      },
+      "reducer": {
+        "type": "avg",
+        "params": []
+      },
+      "evaluator": {
+        "type": "gt",
+        "params": [
+          80
+        ]
+      }
+    }
+  ]
+}
+EOF
+
+    # Алерт для високого використання пам'яті
+    cat > "$alerts_dir/memory_alert.json" << 'EOF'
+{
+  "alert": {
+    "name": "High Memory Usage",
+    "message": "Memory usage is above 85% for more than 5 minutes",
+    "executionErrorState": "keep_state",
+    "for": "5m",
+    "frequency": "1m",
+    "handler": 1,
+    "severity": "warning"
+  },
+  "conditions": [
+    {
+      "type": "query",
+      "query": {
+        "params": [
+          "A",
+          "5m",
+          "now"
+        ]
+      },
+      "reducer": {
+        "type": "avg",
+        "params": []
+      },
+      "evaluator": {
+        "type": "gt",
+        "params": [
+          85
+        ]
+      }
+    }
+  ]
+}
+EOF
+
+    log_success "Алерти Grafana створено"
+}
+
+# Налаштування експортера системних метрик
+setup_node_exporter() {
+    log_step "Налаштування Node Exporter"
+    
+    # Додаємо Node Exporter до docker-compose.yml
+    local compose_file="${BASE_DIR}/docker-compose.yml"
+    
+    if [[ -f "$compose_file" ]]; then
+        # Додаємо Node Exporter після секції prometheus
+        sed -i '/prometheus:/a\
+  node-exporter:\
+    image: prom/node-exporter:latest\
+    restart: unless-stopped\
+    ports:\
+      - "9100:9100"\
+    volumes:\
+      - /proc:/host/proc:ro\
+      - /sys:/host/sys:ro\
+      - /:/rootfs:ro\
+    command:\
+      - "--path.procfs=/host/proc"\
+      - "--path.sysfs=/host/sys"\
+      - "--path.rootfs=/rootfs"\
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"' "$compose_file"
+        
+        # Оновлюємо конфігурацію Prometheus
+        local prometheus_config="${BASE_DIR}/monitoring/prometheus/prometheus.yml"
+        if [[ -f "$prometheus_config" ]]; then
+            # Додаємо job для node-exporter
+            sed -i '/synapse:/a\
+  - job_name: "node-exporter"\
+    static_configs:\
+      - targets: ["node-exporter:9100"]' "$prometheus_config"
+        fi
+        
+        log_success "Node Exporter налаштовано"
+    else
+        log_error "Docker Compose файл не знайдено"
+        return 1
+    fi
+}
+
+# Налаштування логування в Loki
+setup_loki_logging() {
+    log_step "Налаштування Loki для логування"
+    
+    local compose_file="${BASE_DIR}/docker-compose.yml"
+    
+    if [[ -f "$compose_file" ]]; then
+        # Додаємо Loki після секції grafana
+        sed -i '/grafana:/a\
+  loki:\
+    image: grafana/loki:latest\
+    restart: unless-stopped\
+    ports:\
+      - "3100:3100"\
+    command:\
+      - "-config.file=/etc/loki/local-config.yaml"\
+    volumes:\
+      - ./monitoring/loki:/etc/loki\
+      - loki_data:/loki' "$compose_file"
+        
+        # Створюємо конфігурацію Loki
+        mkdir -p "${BASE_DIR}/monitoring/loki"
+        cat > "${BASE_DIR}/monitoring/loki/local-config.yaml" << 'EOF'
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+ingester:
+  lifecycler:
+    address: 127.0.0.1
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+    final_sleep: 0s
+  chunk_idle_period: 5m
+  chunk_retain_period: 30s
+
+schema_config:
+  configs:
+    - from: 2020-05-15
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  boltdb_shipper:
+    active_index_directory: /loki/boltdb-shipper-active
+    cache_location: /loki/boltdb-shipper-cache
+    cache_ttl: 24h
+    shared_store: filesystem
+  filesystem:
+    directory: /loki/chunks
+
+compactor:
+  working_directory: /loki/compactor
+  shared_store: filesystem
+
+limits_config:
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+EOF
+        
+        # Додаємо Loki як джерело даних в Grafana
+        cat > "${BASE_DIR}/monitoring/grafana/datasources/loki.yml" << 'EOF'
+apiVersion: 1
+datasources:
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: false
+EOF
+        
+        log_success "Loki налаштовано для логування"
+    else
+        log_error "Docker Compose файл не знайдено"
+        return 1
+    fi
+}
+
 # Експортуємо функції
 export -f setup_monitoring_stack add_monitoring_services create_prometheus_config create_grafana_datasource
+export -f create_grafana_alerts setup_node_exporter create_system_dashboard setup_loki_logging

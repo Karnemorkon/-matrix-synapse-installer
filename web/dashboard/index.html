@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrix Synapse Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1><i class="fas fa-home"></i> Matrix Synapse Dashboard</h1>
+            <div class="status-indicator" id="statusIndicator">
+                <span class="status-dot"></span>
+                <span class="status-text">Перевірка...</span>
+            </div>
+        </header>
+
+        <nav class="sidebar">
+            <ul class="nav-menu">
+                <li><a href="#overview" class="nav-link active"><i class="fas fa-tachometer-alt"></i> Огляд</a></li>
+                <li><a href="#services" class="nav-link"><i class="fas fa-server"></i> Сервіси</a></li>
+                <li><a href="#users" class="nav-link"><i class="fas fa-users"></i> Користувачі</a></li>
+                <li><a href="#bridges" class="nav-link"><i class="fas fa-bridge"></i> Мости</a></li>
+                <li><a href="#monitoring" class="nav-link"><i class="fas fa-chart-line"></i> Моніторинг</a></li>
+                <li><a href="#backup" class="nav-link"><i class="fas fa-database"></i> Резервне копіювання</a></li>
+                <li><a href="#settings" class="nav-link"><i class="fas fa-cog"></i> Налаштування</a></li>
+                <li><a href="#updates" class="nav-link"><i class="fas fa-sync-alt"></i> Оновлення</a></li>
+            </ul>
+        </nav>
+
+        <main class="main-content">
+            <!-- Огляд системи -->
+            <section id="overview" class="content-section active">
+                <h2><i class="fas fa-tachometer-alt"></i> Огляд системи</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="fas fa-users"></i></div>
+                        <div class="stat-info">
+                            <h3>Активні користувачі</h3>
+                            <p id="activeUsers">Завантаження...</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="fas fa-comments"></i></div>
+                        <div class="stat-info">
+                            <h3>Кімнати</h3>
+                            <p id="totalRooms">Завантаження...</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="fas fa-server"></i></div>
+                        <div class="stat-info">
+                            <h3>Сервіси</h3>
+                            <p id="runningServices">Завантаження...</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="fas fa-hdd"></i></div>
+                        <div class="stat-info">
+                            <h3>Дисковий простір</h3>
+                            <p id="diskUsage">Завантаження...</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Управління сервісами -->
+            <section id="services" class="content-section">
+                <h2><i class="fas fa-server"></i> Управління сервісами</h2>
+                <div class="services-grid" id="servicesGrid">
+                    <!-- Сервіси будуть додані динамічно -->
+                </div>
+            </section>
+
+            <!-- Управління користувачами -->
+            <section id="users" class="content-section">
+                <h2><i class="fas fa-users"></i> Управління користувачами</h2>
+                <div class="action-bar">
+                    <button class="btn btn-primary" onclick="showCreateUserModal()">
+                        <i class="fas fa-plus"></i> Створити користувача
+                    </button>
+                </div>
+                <div class="users-table" id="usersTable">
+                    <!-- Користувачі будуть додані динамічно -->
+                </div>
+            </section>
+
+            <!-- Управління мостами -->
+            <section id="bridges" class="content-section">
+                <h2><i class="fas fa-bridge"></i> Управління мостами</h2>
+                <div class="bridges-grid" id="bridgesGrid">
+                    <!-- Мости будуть додані динамічно -->
+                </div>
+            </section>
+
+            <!-- Моніторинг -->
+            <section id="monitoring" class="content-section">
+                <h2><i class="fas fa-chart-line"></i> Моніторинг</h2>
+                <div class="monitoring-grid">
+                    <div class="chart-container">
+                        <h3>Використання CPU</h3>
+                        <canvas id="cpuChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Використання пам'яті</h3>
+                        <canvas id="memoryChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Мережевий трафік</h3>
+                        <canvas id="networkChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Дисковий I/O</h3>
+                        <canvas id="diskChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Резервне копіювання -->
+            <section id="backup" class="content-section">
+                <h2><i class="fas fa-database"></i> Резервне копіювання</h2>
+                <div class="backup-controls">
+                    <button class="btn btn-primary" onclick="createBackup()">
+                        <i class="fas fa-plus"></i> Створити резервну копію
+                    </button>
+                    <button class="btn btn-secondary" onclick="listBackups()">
+                        <i class="fas fa-list"></i> Список резервних копій
+                    </button>
+                </div>
+                <div class="backup-list" id="backupList">
+                    <!-- Резервні копії будуть додані динамічно -->
+                </div>
+            </section>
+
+            <!-- Налаштування -->
+            <section id="settings" class="content-section">
+                <h2><i class="fas fa-cog"></i> Налаштування</h2>
+                <div class="settings-form">
+                    <div class="form-group">
+                        <label for="domain">Домен:</label>
+                        <input type="text" id="domain" name="domain" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="baseDir">Базова директорія:</label>
+                        <input type="text" id="baseDir" name="baseDir" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="publicRegistration">Публічна реєстрація:</label>
+                        <select id="publicRegistration" name="publicRegistration" class="form-control">
+                            <option value="false">Вимкнено</option>
+                            <option value="true">Увімкнено</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveSettings()">
+                        <i class="fas fa-save"></i> Зберегти налаштування
+                    </button>
+                </div>
+            </section>
+
+            <!-- Оновлення -->
+            <section id="updates" class="content-section">
+                <h2><i class="fas fa-sync-alt"></i> Оновлення системи</h2>
+                <div class="update-info">
+                    <div class="current-version">
+                        <h3>Поточна версія</h3>
+                        <p id="currentVersion">Завантаження...</p>
+                    </div>
+                    <div class="latest-version">
+                        <h3>Остання версія</h3>
+                        <p id="latestVersion">Завантаження...</p>
+                    </div>
+                </div>
+                <div class="update-controls">
+                    <button class="btn btn-primary" onclick="checkForUpdates()">
+                        <i class="fas fa-search"></i> Перевірити оновлення
+                    </button>
+                    <button class="btn btn-success" onclick="performUpdate()" id="updateBtn" disabled>
+                        <i class="fas fa-download"></i> Оновити систему
+                    </button>
+                </div>
+                <div class="update-log" id="updateLog">
+                    <!-- Лог оновлень буде додано динамічно -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Модальні вікна -->
+    <div id="createUserModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Створити нового користувача</h3>
+            <form id="createUserForm">
+                <div class="form-group">
+                    <label for="username">Ім'я користувача:</label>
+                    <input type="text" id="username" name="username" required class="form-control">
+                </div>
+                <div class="form-group">
+                    <label for="password">Пароль:</label>
+                    <input type="password" id="password" name="password" required class="form-control">
+                </div>
+                <div class="form-group">
+                    <label for="isAdmin">Адміністратор:</label>
+                    <input type="checkbox" id="isAdmin" name="isAdmin">
+                </div>
+                <button type="submit" class="btn btn-primary">Створити</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html> 

@@ -1,44 +1,44 @@
 #!/bin/bash
 # ===================================================================================
-# Matrix Control Script - System management utility
+# Скрипт Контролю Matrix - Утиліта управління системою
 # ===================================================================================
 
 set -euo pipefail
 
-# Color codes for output
+# Кольорові коди для виводу
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
 readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly PURPLE='\033[0;35m'
 readonly CYAN='\033[0;36m'
-readonly NC='\033[0m' # No Color
+readonly NC='\033[0m' # Без кольору
 
-# Script configuration
+# Конфігурація скрипта
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 readonly CONFIG_FILE="${PROJECT_ROOT}/config/matrix.conf"
 readonly LOG_FILE="/var/log/matrix-control.log"
 
-# Default values
+# Значення за замовчуванням
 readonly DEFAULT_BASE_DIR="/DATA/matrix"
 readonly DEFAULT_DOMAIN="matrix.example.com"
 
-# Load configuration
+# Завантажуємо конфігурацію
 source "${PROJECT_ROOT}/lib/config.sh" 2>/dev/null || {
-    echo -e "${RED}Error: Cannot load configuration module${NC}"
+    echo -e "${RED}Помилка: Не вдалося завантажити модуль конфігурації${NC}"
     exit 1
 }
 
-# Load all modules
+# Завантажуємо всі модулі
 for module in logger validator docker matrix bridges monitoring backup security; do
     source "${PROJECT_ROOT}/lib/${module}.sh" 2>/dev/null || {
-        echo -e "${YELLOW}Warning: Cannot load module ${module}${NC}"
+        echo -e "${YELLOW}Попередження: Не вдалося завантажити модуль ${module}${NC}"
     }
 done
 
 # ===================================================================================
-# Utility Functions
+# Допоміжні Функції
 # ===================================================================================
 
 log() {
@@ -67,26 +67,26 @@ log_step() {
 }
 
 # ===================================================================================
-# Configuration Management
+# Управління Конфігурацією
 # ===================================================================================
 
 create_default_config() {
     log_step "Створення конфігураційних файлів"
     
-    # Create config directory
+    # Створюємо директорію конфігурації
     mkdir -p "${PROJECT_ROOT}/config"
     
-    # Create main configuration file
+    # Створюємо основний конфігураційний файл
     cat > "${CONFIG_FILE}" << EOF
-# Matrix Synapse Installer Configuration
-# Generated on $(date)
+# Конфігурація Matrix Synapse Installer
+# Згенеровано $(date)
 
-# Basic Settings
+# Основні налаштування
 DOMAIN="${DEFAULT_DOMAIN}"
 BASE_DIR="${DEFAULT_BASE_DIR}"
 POSTGRES_PASSWORD="$(openssl rand -base64 32)"
 
-# Features
+# Функції
 ALLOW_PUBLIC_REGISTRATION="false"
 ENABLE_FEDERATION="false"
 INSTALL_ELEMENT="true"
@@ -95,25 +95,25 @@ SETUP_MONITORING="true"
 SETUP_BACKUP="true"
 USE_CLOUDFLARE_TUNNEL="false"
 
-# Bridge Configuration
+# Конфігурація мостів
 INSTALL_SIGNAL_BRIDGE="false"
 INSTALL_WHATSAPP_BRIDGE="false"
 INSTALL_DISCORD_BRIDGE="false"
 
-# Security Settings
+# Налаштування безпеки
 SSL_ENABLED="true"
 FIREWALL_ENABLED="true"
 RATE_LIMITING="true"
 
-# Monitoring Settings
+# Налаштування моніторингу
 GRAFANA_PASSWORD="$(openssl rand -base64 16)"
 PROMETHEUS_ENABLED="true"
 
-# Backup Settings
+# Налаштування резервного копіювання
 BACKUP_RETENTION_DAYS="30"
 BACKUP_SCHEDULE="0 2 * * *"
 
-# Cloudflare Settings
+# Налаштування Cloudflare
 CLOUDFLARE_TUNNEL_TOKEN=""
 EOF
 
@@ -126,10 +126,10 @@ load_or_create_config() {
         create_default_config
     fi
     
-    # Load configuration
+    # Завантажуємо конфігурацію
     source "${CONFIG_FILE}"
     
-    # Validate required variables
+    # Валідуємо обов'язкові змінні
     local required_vars=("DOMAIN" "BASE_DIR" "POSTGRES_PASSWORD")
     for var in "${required_vars[@]}"; do
         if [[ -z "${!var:-}" ]]; then
@@ -138,47 +138,47 @@ load_or_create_config() {
         fi
     done
     
-    log_success "Конфігурація завантажена"
+    log_success "Конфігурацію завантажено"
 }
 
 # ===================================================================================
-# System Validation
+# Валідація Системи
 # ===================================================================================
 
 validate_system() {
     log_step "Перевірка системних вимог"
     
-    # Check if running as root
+    # Перевіряємо чи запущено як root
     if [[ $EUID -ne 0 ]]; then
         log_error "Скрипт повинен запускатися з правами root"
         exit 1
     fi
     
-    # Check OS
+    # Перевіряємо ОС
     if [[ ! -f /etc/os-release ]]; then
         log_error "Непідтримувана операційна система"
         exit 1
     fi
     
-    # Check Docker
+    # Перевіряємо Docker
     if ! command -v docker &> /dev/null; then
         log_error "Docker не встановлений"
         exit 1
     fi
     
-    # Check Docker Compose
+    # Перевіряємо Docker Compose
     if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
         log_error "Docker Compose не встановлений"
         exit 1
     fi
     
-    # Check available disk space
+    # Перевіряємо доступний дисковий простір
     local available_space=$(df / | awk 'NR==2 {print $4}')
-    if [[ $available_space -lt 10485760 ]]; then # 10GB in KB
+    if [[ $available_space -lt 10485760 ]]; then # 10GB в KB
         log_warning "Мало вільного місця на диску (потрібно мінімум 10GB)"
     fi
     
-    # Check memory
+    # Перевіряємо пам'ять
     local total_mem=$(free -m | awk 'NR==2{print $2}')
     if [[ $total_mem -lt 2048 ]]; then # 2GB
         log_warning "Мало оперативної пам'яті (рекомендується мінімум 2GB)"
@@ -188,7 +188,7 @@ validate_system() {
 }
 
 # ===================================================================================
-# Docker Management
+# Управління Docker
 # ===================================================================================
 
 check_docker_compose() {

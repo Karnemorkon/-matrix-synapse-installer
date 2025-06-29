@@ -263,5 +263,164 @@ sudo apt update && sudo apt upgrade -y
 EOF
 }
 
+# Перевірка SSL сертифікатів
+check_ssl_certificates() {
+    log_step "Перевірка SSL сертифікатів"
+    
+    local domain="${DOMAIN}"
+    local cert_file="/etc/letsencrypt/live/${domain}/fullchain.pem"
+    
+    if [[ -f "$cert_file" ]]; then
+        local expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" | cut -d= -f2)
+        local expiry_epoch=$(date -d "$expiry_date" +%s)
+        local current_epoch=$(date +%s)
+        local days_until_expiry=$(( (expiry_epoch - current_epoch) / 86400 ))
+        
+        if [[ $days_until_expiry -lt 30 ]]; then
+            log_warning "SSL сертифікат закінчується через $days_until_expiry днів"
+            return 1
+        else
+            log_success "SSL сертифікат дійсний ще $days_until_expiry днів"
+            return 0
+        fi
+    else
+        log_error "SSL сертифікат не знайдено"
+        return 1
+    fi
+}
+
+# Налаштування додаткових заголовків безпеки
+setup_security_headers() {
+    log_info "Налаштування додаткових заголовків безпеки"
+    
+    local nginx_conf="/etc/nginx/conf.d/security-headers.conf"
+    
+    cat > "$nginx_conf" << 'EOF'
+# Додаткові заголовки безпеки
+add_header X-Content-Type-Options nosniff always;
+add_header X-Frame-Options DENY always;
+add_header X-XSS-Protection "1; mode=block" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none';" always;
+add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+
+# Обмеження розміру запитів
+client_max_body_size 50M;
+client_body_timeout 60s;
+client_header_timeout 60s;
+
+# Rate limiting
+limit_req_zone $binary_remote_addr zone=matrix:10m rate=10r/s;
+limit_req zone=matrix burst=20 nodelay;
+EOF
+
+    log_success "Заголовки безпеки налаштовано"
+}
+
+# Перевірка відкритих портів
+check_open_ports() {
+    log_step "Перевірка відкритих портів"
+    
+    local expected_ports=(22 80 443 8008 8448)
+    local open_ports=$(ss -tuln | grep LISTEN | awk '{print $5}' | cut -d: -f2 | sort -u)
+    
+    for port in $open_ports; do
+        if [[ ! " ${expected_ports[@]} " =~ " ${port} " ]]; then
+            log_warning "Неочікуваний відкритий порт: $port"
+        fi
+    done
+    
+    log_success "Перевірка портів завершена"
+}
+
+# Налаштування fail2ban
+setup_fail2ban() {
+    log_step "Налаштування Fail2ban"
+    
+    # Встановлюємо fail2ban
+    if ! command -v fail2ban-client &> /dev/null; then
+        apt install -y fail2ban
+    fi
+    
+    # Створюємо конфігурацію для Matrix
+    cat > /etc/fail2ban/jail.d/matrix.conf << 'EOF'
+[matrix-synapse]
+enabled = true
+port = 8008,8448
+filter = matrix-synapse
+logpath = /var/log/matrix/synapse.log
+maxretry = 5
+bantime = 3600
+findtime = 600
+
+[matrix-ssh]
+enabled = true
+port = ssh
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 3
+bantime = 3600
+findtime = 600
+EOF
+
+    # Створюємо фільтр для Matrix
+    cat > /etc/fail2ban/filter.d/matrix-synapse.conf << 'EOF'
+[Definition]
+failregex = ^.*WARN.*-.*-.*Failed password attempt for.*<HOST>.*$
+ignoreregex =
+EOF
+
+    # Перезапускаємо fail2ban
+    systemctl restart fail2ban
+    systemctl enable fail2ban
+    
+    log_success "Fail2ban налаштовано"
+}
+
+# Перевірка вразливостей
+security_audit() {
+    log_step "Аудит безпеки системи"
+    
+    local issues=0
+    
+    # Перевіряємо права доступу до конфігураційних файлів
+    local config_files=(
+        "${BASE_DIR}/synapse/config/homeserver.yaml"
+        "${BASE_DIR}/docker-compose.yml"
+        "${BASE_DIR}/.env"
+    )
+    
+    for file in "${config_files[@]}"; do
+        if [[ -f "$file" ]]; then
+            local perms=$(stat -c %a "$file")
+            if [[ $perms -gt 640 ]]; then
+                log_warning "Небезпечні права доступу до $file: $perms"
+                ((issues++))
+            fi
+        fi
+    done
+    
+    # Перевіряємо чи UFW увімкнено
+    if ! ufw status | grep -q "Status: active"; then
+        log_warning "UFW не увімкнено"
+        ((issues++))
+    fi
+    
+    # Перевіряємо чи fail2ban запущений
+    if ! systemctl is-active --quiet fail2ban; then
+        log_warning "Fail2ban не запущений"
+        ((issues++))
+    fi
+    
+    if [[ $issues -eq 0 ]]; then
+        log_success "Аудит безпеки пройшов успішно"
+    else
+        log_warning "Знайдено $issues проблем з безпекою"
+    fi
+    
+    return $issues
+}
+
 # Експортуємо функції
-export -f setup_security setup_firewall secure_file_permissions setup_letsencrypt_ssl setup_ssl_renewal setup_nginx_proxy create_security_documentation validate_ssl_certificate
+export -f setup_security setup_firewall secure_file_permissions setup_letsencrypt_ssl setup_ssl_renewal setup_nginx_proxy create_security_documentation validate_ssl_certificate check_ssl_certificates setup_security_headers check_open_ports setup_fail2ban security_audit

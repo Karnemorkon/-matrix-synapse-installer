@@ -1,0 +1,241 @@
+# ===================================================================================
+# Matrix Synapse Installer - Development Environment
+# Версія: 4.0
+# ===================================================================================
+
+version: '3.8'
+
+services:
+  # Matrix Installer з веб інтерфейсом
+  matrix-installer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: matrix-installer-dev
+    ports:
+      - "8080:80"           # Веб інтерфейс
+      - "8081:8081"         # API сервер
+      - "8008:8008"         # Matrix Synapse
+      - "8448:8448"         # Matrix Synapse (federation)
+    volumes:
+      - ./:/opt/matrix-installer:ro  # Код проекту (read-only)
+      - matrix-data:/DATA/matrix     # Дані Matrix
+      - matrix-logs:/var/log/matrix  # Логи
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket
+    environment:
+      # Основні налаштування
+      - MATRIX_DOMAIN=matrix.localhost
+      - MATRIX_BASE_DIR=/DATA/matrix
+      - MATRIX_POSTGRES_PASSWORD=dev_password_123
+      
+      # Функції
+      - MATRIX_ALLOW_PUBLIC_REGISTRATION=true
+      - MATRIX_ENABLE_FEDERATION=false
+      - MATRIX_INSTALL_ELEMENT=true
+      - MATRIX_INSTALL_BRIDGES=false
+      - MATRIX_SETUP_MONITORING=true
+      - MATRIX_SETUP_BACKUP=true
+      - MATRIX_USE_CLOUDFLARE_TUNNEL=false
+      
+      # Мости
+      - MATRIX_INSTALL_SIGNAL_BRIDGE=false
+      - MATRIX_INSTALL_WHATSAPP_BRIDGE=false
+      - MATRIX_INSTALL_DISCORD_BRIDGE=false
+      
+      # Безпека
+      - MATRIX_SSL_ENABLED=false
+      - MATRIX_FIREWALL_ENABLED=false
+      - MATRIX_RATE_LIMITING=false
+      
+      # Моніторинг
+      - MATRIX_GRAFANA_PASSWORD=dev_grafana_123
+      - MATRIX_PROMETHEUS_ENABLED=true
+      
+      # Резервне копіювання
+      - MATRIX_BACKUP_RETENTION_DAYS=7
+      - MATRIX_BACKUP_SCHEDULE="0 2 * * *"
+      
+      # Веб інтерфейс
+      - MATRIX_WEB_DASHBOARD_PORT=8081
+      - MATRIX_WEB_DASHBOARD_ENABLED=true
+      
+      # Розробка
+      - PYTHONUNBUFFERED=1
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    networks:
+      - matrix-network
+    restart: unless-stopped
+    profiles:
+      - dev
+
+  # PostgreSQL для розробки
+  postgres-dev:
+    image: postgres:15-alpine
+    container_name: matrix-postgres-dev
+    environment:
+      - POSTGRES_DB=matrix
+      - POSTGRES_USER=matrix
+      - POSTGRES_PASSWORD=dev_password_123
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - matrix-network
+    restart: unless-stopped
+    profiles:
+      - dev
+
+  # Redis для кешування
+  redis-dev:
+    image: redis:7-alpine
+    container_name: matrix-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-dev-data:/data
+    networks:
+      - matrix-network
+    restart: unless-stopped
+    profiles:
+      - dev
+
+  # Grafana для моніторингу
+  grafana-dev:
+    image: grafana/grafana:latest
+    container_name: matrix-grafana-dev
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=dev_grafana_123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-dev-data:/var/lib/grafana
+      - ./examples/grafana-dashboards:/etc/grafana/provisioning/dashboards:ro
+    ports:
+      - "3000:3000"
+    networks:
+      - matrix-network
+    restart: unless-stopped
+    profiles:
+      - dev
+
+  # Prometheus для метрик
+  prometheus-dev:
+    image: prom/prometheus:latest
+    container_name: matrix-prometheus-dev
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - prometheus-dev-data:/prometheus
+      - ./examples/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - matrix-network
+    restart: unless-stopped
+    profiles:
+      - dev
+
+  # Node Exporter для системних метрик
+  node-exporter-dev:
+    image: prom/node-exporter:latest
+    container_name: matrix-node-exporter-dev
+    command:
+      - '--path.rootfs=/host'
+    network_mode: host
+    pid: host
+    restart: unless-stopped
+    volumes:
+      - '/:/host:ro,rslave'
+    profiles:
+      - dev
+
+  # Loki для логів
+  loki-dev:
+    image: grafana/loki:latest
+    container_name: matrix-loki-dev
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki-dev-data:/loki
+      - ./examples/loki-config.yml:/etc/loki/local-config.yaml:ro
+    ports:
+      - "3100:3100"
+    networks:
+      - matrix-network
+    restart: unless-stopped
+    profiles:
+      - dev
+
+  # Promtail для збору логів
+  promtail-dev:
+    image: grafana/promtail:latest
+    container_name: matrix-promtail-dev
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./examples/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/log:/var/log:ro
+      - matrix-logs:/var/log/matrix:ro
+    ports:
+      - "9080:9080"
+    networks:
+      - matrix-network
+    restart: unless-stopped
+    profiles:
+      - dev
+
+  # MailHog для тестування email
+  mailhog-dev:
+    image: mailhog/mailhog:latest
+    container_name: matrix-mailhog-dev
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      - matrix-network
+    restart: unless-stopped
+    profiles:
+      - dev
+
+  # Adminer для управління БД
+  adminer-dev:
+    image: adminer:latest
+    container_name: matrix-adminer-dev
+    ports:
+      - "8082:8080"
+    environment:
+      - ADMINER_DEFAULT_SERVER=postgres-dev
+    networks:
+      - matrix-network
+    restart: unless-stopped
+    profiles:
+      - dev
+
+# Томи для збереження даних
+volumes:
+  matrix-data:
+    driver: local
+  matrix-logs:
+    driver: local
+  postgres-dev-data:
+    driver: local
+  redis-dev-data:
+    driver: local
+  grafana-dev-data:
+    driver: local
+  prometheus-dev-data:
+    driver: local
+  loki-dev-data:
+    driver: local
+
+# Мережа для комунікації між сервісами
+networks:
+  matrix-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16 

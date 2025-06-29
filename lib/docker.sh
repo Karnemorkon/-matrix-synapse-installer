@@ -10,7 +10,7 @@ readonly DOCKER_REPO_URL="https://download.docker.com/linux/ubuntu"
 
 # --- Функції ---
 install_docker_dependencies() {
-    log_step "Встановлення Docker залежностей"
+    log_step "Встановлення всіх необхідних залежностей"
     
     # Оновлюємо списки пакетів
     log_info "Оновлення списків пакетів..."
@@ -19,10 +19,45 @@ install_docker_dependencies() {
         return 1
     fi
     
-    # Встановлюємо базові пакети
-    log_info "Встановлення базових пакетів..."
-    if ! log_command "apt install -y curl apt-transport-https ca-certificates gnupg lsb-release"; then
+    # Встановлюємо базові системні пакети
+    log_info "Встановлення базових системних пакетів..."
+    if ! log_command "apt install -y curl wget git apt-transport-https ca-certificates gnupg lsb-release"; then
         log_error "Помилка встановлення базових пакетів"
+        return 1
+    fi
+    
+    # Встановлюємо Python та залежності для веб API
+    log_info "Встановлення Python залежностей..."
+    if ! log_command "apt install -y python3 python3-pip python3-venv python3-dev build-essential libssl-dev libffi-dev"; then
+        log_error "Помилка встановлення Python залежностей"
+        return 1
+    fi
+    
+    # Встановлюємо веб сервер та залежності
+    log_info "Встановлення веб серверів та залежностей..."
+    if ! log_command "apt install -y nginx supervisor"; then
+        log_error "Помилка встановлення веб серверів"
+        return 1
+    fi
+    
+    # Встановлюємо утиліти для системного адміністрування
+    log_info "Встановлення системних утиліт..."
+    if ! log_command "apt install -y cron rsync unzip jq net-tools"; then
+        log_error "Помилка встановлення системних утиліт"
+        return 1
+    fi
+    
+    # Встановлюємо залежності для безпеки
+    log_info "Встановлення залежностей безпеки..."
+    if ! log_command "apt install -y ufw fail2ban openssl"; then
+        log_error "Помилка встановлення залежностей безпеки"
+        return 1
+    fi
+    
+    # Встановлюємо SSL сертифікати
+    log_info "Встановлення SSL залежностей..."
+    if ! log_command "apt install -y certbot python3-certbot-nginx"; then
+        log_error "Помилка встановлення SSL залежностей"
         return 1
     fi
     
@@ -67,6 +102,13 @@ install_docker_dependencies() {
         log_success "Docker вже встановлено"
     fi
     
+    # Встановлюємо Python пакети для веб API
+    log_info "Встановлення Python пакетів для веб API..."
+    if ! log_command "pip3 install --no-cache-dir flask flask-cors pyyaml requests psutil docker"; then
+        log_error "Помилка встановлення Python пакетів"
+        return 1
+    fi
+    
     # Перевіряємо Docker Compose
     if docker compose version >> "${LOG_FILE}" 2>&1; then
         log_success "Docker Compose доступний"
@@ -74,6 +116,8 @@ install_docker_dependencies() {
         log_error "Docker Compose недоступний"
         exit 1
     fi
+    
+    log_success "Всі залежності встановлено успішно"
 }
 
 setup_directory_structure() {
@@ -374,5 +418,72 @@ start_matrix_services() {
     return 1
 }
 
+# --- Додаткові функції ---
+
+# Встановлення додаткових залежностей для мостів та моніторингу
+install_additional_dependencies() {
+    log_step "Встановлення додаткових залежностей"
+    
+    # Встановлюємо залежності для мостів
+    if [[ "${INSTALL_BRIDGES}" == "true" ]]; then
+        log_info "Встановлення залежностей для мостів..."
+        if ! log_command "apt install -y sqlite3"; then
+            log_warning "Не вдалося встановити SQLite для мостів"
+        fi
+    fi
+    
+    # Встановлюємо залежності для моніторингу
+    if [[ "${SETUP_MONITORING}" == "true" ]]; then
+        log_info "Встановлення залежностей для моніторингу..."
+        if ! log_command "apt install -y prometheus-node-exporter"; then
+            log_warning "Не вдалося встановити Node Exporter"
+        fi
+    fi
+    
+    # Встановлюємо залежності для резервного копіювання
+    if [[ "${SETUP_BACKUP}" == "true" ]]; then
+        log_info "Встановлення залежностей для резервного копіювання..."
+        if ! log_command "apt install -y tar gzip"; then
+            log_warning "Не вдалося встановити утиліти архівування"
+        fi
+    fi
+    
+    log_success "Додаткові залежності встановлено"
+}
+
+# Перевірка наявності всіх необхідних команд
+verify_dependencies() {
+    log_step "Перевірка наявності залежностей"
+    
+    local missing_deps=()
+    local required_commands=(
+        "curl" "wget" "git" "python3" "pip3" "docker" "docker-compose"
+        "nginx" "supervisord" "cron" "rsync" "unzip" "jq" "ufw"
+        "fail2ban-client" "openssl" "certbot" "ss" "ping" "free" "df"
+    )
+    
+    for cmd in "${required_commands[@]}"; do
+        if ! command -v "$cmd" &> /dev/null; then
+            missing_deps+=("$cmd")
+        fi
+    done
+    
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+        log_error "Відсутні залежності: ${missing_deps[*]}"
+        return 1
+    else
+        log_success "Всі залежності доступні"
+        return 0
+    fi
+}
+
+# Очищення кешу пакетів
+cleanup_package_cache() {
+    log_info "Очищення кешу пакетів..."
+    apt autoremove -y
+    apt autoclean
+    log_success "Кеш пакетів очищено"
+}
+
 # Експортуємо функції
-export -f install_docker_dependencies setup_directory_structure generate_docker_compose start_matrix_services
+export -f install_docker_dependencies setup_directory_structure generate_docker_compose start_matrix_services install_additional_dependencies verify_dependencies cleanup_package_cache
