@@ -1,200 +1,251 @@
 # 🚀 Matrix Synapse Auto Installer v4.0
 
-Автоматизований інсталятор Matrix Synapse з підтримкою мостів, моніторингу, резервного копіювання та веб інтерфейсу управління.
+Автоматизований інсталятор Matrix Synapse з підтримкою Docker Compose, офіційних образів контейнерів, мостів, моніторингу та веб-інтерфейсу управління.
 
-## ✨ Основні функції v4.0
+## ✨ Особливості
 
-### 🌐 Веб інтерфейс управління
-- Сучасний Dashboard з інтуїтивним інтерфейсом
-- Управління сервісами через браузер
-- Моніторинг в реальному часі з графіками
-- Система оновлень через веб інтерфейс
-- Управління користувачами та резервним копіюванням
+- 🐳 **Docker Compose архітектура** - Використання офіційних образів контейнерів
+- 🌐 **Веб-інтерфейс управління** - Зручне управління через браузер
+- 🌉 **Підтримка мостів** - Signal, WhatsApp, Discord інтеграція
+- 📊 **Система моніторингу** - Prometheus, Grafana, Loki, Node Exporter
+- ☁️ **Cloudflare Tunnel** - Безпечний доступ без публічного IP
+- 🔒 **Розширена безпека** - SSL, файрвол, fail2ban, валідація
+- 💾 **Автоматичне резервне копіювання** - Cron-based резервні копії
+- 🧪 **Тестування** - Автоматична перевірка залежностей
+- 📱 **Element Web** - Офіційний Matrix клієнт
+- 🐳 **Portainer** - Візуальне управління контейнерами
 
-### ⚙️ Конфігурація через змінні середовища
-- Повна автоматизація для Docker
-- Гнучкість налаштування без інтерактивних запитів
-- Безпечні паролі за замовчуванням
+## 🏗️ Архітектура
+
+```
+matrix-synapse-installer/
+├── docker-compose.yml          # Основна конфігурація Docker Compose
+├── install.sh                  # Головний інсталятор
+├── bin/
+│   └── matrix-control.sh       # Скрипт управління сервісами
+├── lib/                        # Модулі інсталятора
+├── web/                        # Веб-інтерфейс управління
+├── docs/                       # Документація
+├── tests/                      # Тести
+└── examples/                   # Приклади конфігурацій
+```
+
+## 🐳 Офіційні образи контейнерів
+
+- **matrixdotorg/synapse** - Matrix Synapse сервер
+- **postgres:15-alpine** - PostgreSQL база даних
+- **redis:7-alpine** - Redis кеш
+- **nginx:alpine** - Nginx веб-сервер
+- **grafana/grafana** - Grafana дашборди
+- **prom/prometheus** - Prometheus метрики
+- **prom/node-exporter** - Node Exporter
+- **grafana/loki** - Loki логи
+- **grafana/promtail** - Promtail збір логів
+- **cloudflare/cloudflared** - Cloudflare Tunnel
+- **portainer/portainer-ce** - Portainer управління
+- **dock.mau.dev/mautrix/signal** - Signal Bridge
+- **dock.mau.dev/mautrix/whatsapp** - WhatsApp Bridge
+- **dock.mau.dev/mautrix/discord** - Discord Bridge
 
 ## 🚀 Швидкий старт
 
-### 📦 Інтерактивне встановлення
+### 1. Клонування репозиторію
 ```bash
-curl -fsSL https://raw.githubusercontent.com/your-repo/matrix-synapse-installer/main/install.sh | sudo bash
+git clone https://github.com/Karnemorkon/matrix-synapse-installer.git
+cd matrix-synapse-installer
 ```
 
-### ⚙️ Встановлення з змінними середовища
+### 2. Запуск інсталятора
 ```bash
-export MATRIX_DOMAIN=matrix.example.com
-export MATRIX_INSTALL_ELEMENT=true
-export MATRIX_SETUP_MONITORING=true
-export MATRIX_WEB_DASHBOARD_ENABLED=true
-curl -fsSL https://raw.githubusercontent.com/your-repo/matrix-synapse-installer/main/install.sh | sudo bash
+# Інтерактивне встановлення
+./install.sh
+
+# Або з змінними середовища
+MATRIX_DOMAIN=matrix.example.com ./install.sh
 ```
 
-### 🐳 Docker встановлення
+### 3. Управління сервісами
 ```bash
-docker run -d \
-  -p 8080:80 \
-  -p 8081:8081 \
-  -e MATRIX_DOMAIN=matrix.example.com \
-  -e MATRIX_WEB_DASHBOARD_ENABLED=true \
-  -v /DATA/matrix:/DATA/matrix \
-  ghcr.io/your-repo/matrix-synapse-installer:latest
+# Запуск всіх сервісів
+./bin/matrix-control.sh start
+
+# Статус сервісів
+./bin/matrix-control.sh status
+
+# Логи конкретного сервісу
+./bin/matrix-control.sh logs synapse
+
+# Оновлення образів
+./bin/matrix-control.sh update
 ```
-
-## 🌐 Веб інтерфейс
-
-### 📊 Доступ до сервісів
-- Dashboard: http://your-domain:8081
-- API: http://your-domain:8081/api
-- Element Web: http://your-domain:80
-- Grafana: http://your-domain:3000
-- Prometheus: http://your-domain:9090
-
-### 🛠️ Функції веб інтерфейсу
-- Огляд системи — статус, статистика, ресурси
-- Управління сервісами — запуск, зупинка, перезапуск
-- Управління користувачами — створення, видалення
-- Система оновлень — перевірка та встановлення
-- Резервне копіювання — створення та відновлення
-- Моніторинг — графіки та алерти
 
 ## ⚙️ Конфігурація
 
-### 🔧 Основні змінні середовища
+### Змінні середовища
+
+| Змінна | Опис | За замовчуванням |
+|--------|------|------------------|
+| `MATRIX_DOMAIN` | Домен для Matrix сервера | `matrix.localhost` |
+| `MATRIX_BASE_DIR` | Базова директорія | `/opt/matrix` |
+| `MATRIX_POSTGRES_PASSWORD` | Пароль PostgreSQL | Генерується |
+| `MATRIX_ALLOW_PUBLIC_REGISTRATION` | Публічна реєстрація | `false` |
+| `MATRIX_ENABLE_FEDERATION` | Федерація | `false` |
+| `MATRIX_INSTALL_ELEMENT` | Element Web | `true` |
+| `MATRIX_INSTALL_BRIDGES` | Мости | `false` |
+| `MATRIX_SETUP_MONITORING` | Моніторинг | `true` |
+| `MATRIX_SETUP_BACKUP` | Резервне копіювання | `true` |
+| `MATRIX_USE_CLOUDFLARE_TUNNEL` | Cloudflare Tunnel | `false` |
+| `MATRIX_CLOUDFLARE_TUNNEL_TOKEN` | Токен Cloudflare | - |
+| `MATRIX_WEB_DASHBOARD_ENABLED` | Веб-інтерфейс | `true` |
+| `MATRIX_WEB_DASHBOARD_PORT` | Порт веб-інтерфейсу | `8081` |
+
+### Профілі Docker Compose
+
+- **Основні сервіси**: `postgres`, `redis`, `synapse`, `nginx`
+- **Моніторинг**: `--profile monitoring`
+- **Мости**: `--profile bridges`
+- **Element Web**: `--profile element`
+- **Cloudflare Tunnel**: `--profile cloudflare`
+- **Portainer**: `--profile portainer`
+
+## 🌐 Доступні сервіси
+
+Після встановлення будуть доступні:
+
+- **Matrix Synapse**: `http://your-domain:8008`
+- **Element Web**: `https://your-domain`
+- **Веб-інтерфейс**: `http://localhost:8081`
+- **Grafana**: `http://localhost:3000`
+- **Prometheus**: `http://localhost:9090`
+- **Portainer**: `http://localhost:9000`
+- **Loki**: `http://localhost:3100`
+
+## 🔧 Управління
+
+### Основні команди
 ```bash
-MATRIX_DOMAIN=matrix.example.com
-MATRIX_BASE_DIR=/DATA/matrix
-MATRIX_INSTALL_ELEMENT=true
-MATRIX_INSTALL_BRIDGES=false
-MATRIX_SETUP_MONITORING=true
-MATRIX_SETUP_BACKUP=true
-MATRIX_WEB_DASHBOARD_ENABLED=true
-MATRIX_INSTALL_SIGNAL_BRIDGE=false
-MATRIX_INSTALL_WHATSAPP_BRIDGE=false
-MATRIX_INSTALL_DISCORD_BRIDGE=false
-MATRIX_SSL_ENABLED=true
-MATRIX_FIREWALL_ENABLED=true
-MATRIX_RATE_LIMITING=true
-```
+# Запуск/зупинка
+./bin/matrix-control.sh start
+./bin/matrix-control.sh stop
+./bin/matrix-control.sh restart
 
-### 📝 Приклади конфігурації
-
-#### Docker Compose
-```yaml
-version: '3.8'
-services:
-  matrix-installer:
-    image: ghcr.io/your-repo/matrix-synapse-installer:latest
-    environment:
-      - MATRIX_DOMAIN=matrix.example.com
-      - MATRIX_INSTALL_ELEMENT=true
-      - MATRIX_SETUP_MONITORING=true
-      - MATRIX_WEB_DASHBOARD_ENABLED=true
-    ports:
-      - "8080:80"
-      - "8081:8081"
-    volumes:
-      - matrix-data:/DATA/matrix
-```
-
-## 🛠️ Управління
-
-### 🖥️ CLI команди
-```bash
+# Моніторинг
 ./bin/matrix-control.sh status
-./bin/matrix-control.sh logs
-./bin/matrix-control.sh backup create
-./bin/matrix-control.sh backup list
-./bin/matrix-control.sh update check
-./bin/matrix-control.sh update perform
-./bin/matrix-control.sh user create admin
-./bin/matrix-control.sh user list
+./bin/matrix-control.sh logs [сервіс]
+
+# Резервне копіювання
+./bin/matrix-control.sh backup
+./bin/matrix-control.sh restore <файл>
+
+# Оновлення
+./bin/matrix-control.sh update
+
+# Додаткові сервіси
+./bin/matrix-control.sh monitoring
+./bin/matrix-control.sh bridges
+./bin/matrix-control.sh portainer
+./bin/matrix-control.sh cloudflare
 ```
 
-### 🌐 Веб API
+### Docker Compose команди
 ```bash
-curl http://localhost:8081/api/status
-curl http://localhost:8081/api/overview
-curl -X POST http://localhost:8081/api/services/synapse/restart
-curl -X POST http://localhost:8081/api/users -H "Content-Type: application/json" -d '{"username":"testuser","password":"testpass"}'
+# Запуск з профілями
+docker compose --profile monitoring up -d
+docker compose --profile bridges up -d
+docker compose --profile portainer up -d
+
+# Перегляд логів
+docker compose logs -f synapse
+docker compose logs -f nginx
+
+# Оновлення образів
+docker compose pull
+docker compose up -d
 ```
-
-## 🔧 Розробка
-
-### 🐳 Локальна розробка
-```bash
-git clone https://github.com/your-repo/matrix-synapse-installer.git
-cd matrix-synapse-installer
-docker-compose -f docker-compose.dev.yml --profile dev up -d
-```
-
-## 📊 Моніторинг
-
-- Використання ресурсів (CPU, RAM, Disk)
-- Мережевий трафік в реальному часі
-- Статус сервісів автоматичне відстеження
-- Помилки та логи централізоване зборування
-- Grafana алерти налаштування
-
-## 🛡️ Безпека
-
-- HTTPS обов'язковий для production
-- Файрвол автоматичне налаштування
-- Rate limiting захист від атак
-- Валідація вхідних даних
-- Безпечні паролі автоматична генерація
 
 ## 📚 Документація
 
-- [📋 Інсталяція](docs/INSTALLATION.md)
-- [🌐 Веб інтерфейс](docs/WEB_DASHBOARD.md)
-- [🔧 Налаштування](docs/CONFIGURATION.md)
-- [🛠️ Troubleshooting](docs/TROUBLESHOOTING.md)
-- [🌉 Мости](docs/BRIDGES_SETUP.md)
+- [📖 Детальний гід встановлення](docs/INSTALLATION.md)
+- [🌉 Налаштування мостів](docs/BRIDGES_SETUP.md)
 - [☁️ Cloudflare Tunnel](docs/CLOUDFLARE_TUNNEL.md)
 - [📊 Моніторинг](docs/MONITORING.md)
+- [🔒 Безпека](docs/SECURITY.md)
 - [💾 Резервне копіювання](docs/BACKUP.md)
+- [🌐 Веб-інтерфейс](docs/WEB_DASHBOARD.md)
+- [🧪 Тестування](docs/TESTING.md)
+- [📋 Залежності](docs/DEPENDENCIES.md)
+- [🔧 Виправлення проблем](docs/TROUBLESHOOTING.md)
+- [📈 Покращення](docs/IMPROVEMENTS.md)
+- [📝 Історія змін](docs/CHANGELOG.md)
+
+## 🧪 Тестування
+
+```bash
+# Перевірка залежностей
+./tests/test-dependencies.sh
+
+# Тест встановлення
+./tests/test-installation.sh
+
+# Перевірка конфігурації
+./tests/test-config.sh
+```
+
+## 🔒 Безпека
+
+- ✅ SSL/TLS сертифікати (Let's Encrypt)
+- ✅ Файрвол (UFW)
+- ✅ Захист від атак (fail2ban)
+- ✅ Валідація вхідних даних
+- ✅ Безпечні заголовки HTTP
+- ✅ Обмеження швидкості запитів
+- ✅ Cloudflare Tunnel підтримка
+
+## 🌉 Підтримувані мости
+
+- 📱 **Signal Bridge** - Інтеграція з Signal
+- 💬 **WhatsApp Bridge** - Інтеграція з WhatsApp
+- 🎮 **Discord Bridge** - Інтеграція з Discord
+
+## 📊 Моніторинг
+
+- **Prometheus** - Збір метрик
+- **Grafana** - Візуалізація даних
+- **Node Exporter** - Системні метрики
+- **Loki** - Збір логів
+- **Promtail** - Агент збору логів
 
 ## 🤝 Внесок
 
-1. Перевірте існуючі issues
-2. Створіть нове issue з описом проблеми
-3. Додайте логи та конфігурацію
+1. Форкніть репозиторій
+2. Створіть гілку для нової функції (`git checkout -b feature/amazing-feature`)
+3. Зробіть коміт змін (`git commit -m 'Add amazing feature'`)
+4. Запушіть в гілку (`git push origin feature/amazing-feature`)
+5. Відкрийте Pull Request
 
 ## 📄 Ліцензія
 
-Цей проект ліцензовано під MIT License.
+Цей проект ліцензовано під MIT License - дивіться файл [LICENSE](LICENSE) для деталей.
 
 ## 🙏 Подяки
 
-- Matrix.org — За чудовий протокол
-- Synapse — За реалізацію сервера
-- Element — За веб клієнт
-- Docker — За контейнеризацію
+- [Matrix.org](https://matrix.org/) - За Matrix протокол
+- [Element](https://element.io/) - За Element Web клієнт
+- [Docker](https://docker.com/) - За контейнеризацію
+- [Cloudflare](https://cloudflare.com/) - За Cloudflare Tunnel
+- [Grafana](https://grafana.com/) - За моніторинг
+- [Prometheus](https://prometheus.io/) - За метрики
 
-**⭐ Якщо проект вам сподобався, поставте зірку на GitHub!**
+## 📞 Підтримка
 
-## 📋 Передумови
+Якщо у вас виникли питання або проблеми:
 
-### Системні вимоги
-- **ОС:** Ubuntu 20.04+ або Debian 11+
-- **RAM:** 2 GB (мінімум), 4 GB (рекомендовано)
-- **Диск:** 10 GB вільного місця
-- **Домен:** з правильно налаштованим DNS
+1. Перевірте [документацію](docs/)
+2. Подивіться [виправлення проблем](docs/TROUBLESHOOTING.md)
+3. Відкрийте [Issue](https://github.com/Karnemorkon/matrix-synapse-installer/issues)
 
-### Залежності
-Всі залежності встановлюються автоматично під час інсталяції:
+---
 
-- **Docker 20.10+** - контейнеризація
-- **Python 3.8+** - веб API та скрипти
-- **Nginx** - веб сервер та reverse proxy
-- **PostgreSQL** - база даних
-- **UFW** - файрвол
-- **Fail2ban** - захист від атак
-- **Certbot** - SSL сертифікати
-
-📖 [Повний список залежностей](docs/DEPENDENCIES.md)
+**Matrix Synapse Auto Installer v4.0** - Зроблено з ❤️ для спільноти Matrix
 
 

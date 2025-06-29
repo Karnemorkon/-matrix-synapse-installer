@@ -151,218 +151,776 @@ setup_directory_structure() {
     log_success "Структуру директорій створено"
 }
 
+# Генерація Docker Compose конфігурації з офіційними образами
 generate_docker_compose() {
-    log_step "Генерація Docker Compose конфігурації"
+    log_step "Створення Docker Compose конфігурації"
     
     local compose_file="${BASE_DIR}/docker-compose.yml"
     
-    cat > "${compose_file}" << EOF
-version: '3.8'
-
-services:
-  postgres:
-    image: postgres:15-alpine
-    restart: unless-stopped
-    volumes:
-      - ./synapse/data/postgres:/var/lib/postgresql/data
-    environment:
-      POSTGRES_DB: matrix_db
-      POSTGRES_USER: matrix_user
-      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U matrix_user -d matrix_db"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  synapse:
-    image: matrixdotorg/synapse:latest
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    volumes:
-      - ./synapse/config:/data
-      - ./synapse/data:/synapse/data
-    environment:
-      SYNAPSE_SERVER_NAME: ${DOMAIN}
-      SYNAPSE_REPORT_STATS: "no"
-      SYNAPSE_CONFIG_PATH: /data/homeserver.yaml
-    ports:
-      - "8008:8008"
-      - "8448:8448"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8008/_matrix/client/versions || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  synapse-admin:
-    image: awesometechnologies/synapse-admin:latest
-    restart: unless-stopped
-    depends_on:
-      synapse:
-        condition: service_healthy
-    environment:
-      SYNAPSE_URL: http://synapse:8008
-      SYNAPSE_SERVER_NAME: ${DOMAIN}
-    ports:
-      - "8080:80"
-EOF
-
-    # Додаємо Element Web якщо увімкнено
-    if [[ "${INSTALL_ELEMENT}" == "true" ]]; then
-        cat >> "${compose_file}" << EOF
-
-  element:
-    image: vectorim/element-web:latest
-    restart: unless-stopped
-    volumes:
-      - ./element/config.json:/app/config.json:ro
-    ports:
-      - "80:80"
-EOF
+    # Копіюємо основний docker-compose.yml
+    if [[ -f "${SCRIPT_DIR}/docker-compose.yml" ]]; then
+        cp "${SCRIPT_DIR}/docker-compose.yml" "${compose_file}"
+        log_success "Docker Compose конфігурацію скопійовано"
+    else
+        log_error "Файл docker-compose.yml не знайдено в ${SCRIPT_DIR}"
+        return 1
     fi
     
-    # Додаємо Cloudflare Tunnel якщо увімкнено
-    if [[ "${USE_CLOUDFLARE_TUNNEL}" == "true" ]]; then
-        cat >> "${compose_file}" << EOF
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    command: tunnel run --token \${CLOUDFLARE_TUNNEL_TOKEN}
-    environment:
-      - TUNNEL_TOKEN=\${CLOUDFLARE_TUNNEL_TOKEN}
-EOF
-    fi
-    
-    # Додаємо моніторинг якщо увімкнено
-    if [[ "${SETUP_MONITORING}" == "true" ]]; then
-        cat >> "${compose_file}" << EOF
-
-  prometheus:
-    image: prom/prometheus:latest
-    restart: unless-stopped
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus:/etc/prometheus
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--web.enable-lifecycle'
-
-  grafana:
-    image: grafana/grafana:latest
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana:/etc/grafana/provisioning
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin123
-      - GF_USERS_ALLOW_SIGN_UP=false
-EOF
-    fi
-    
-    # Додаємо секцію volumes тільки якщо моніторинг увімкнено
-    if [[ "${SETUP_MONITORING}" == "true" ]]; then
-        cat >> "${compose_file}" << EOF
-
-volumes:
-  prometheus_data:
-  grafana_data:
-EOF
-    fi
-    
-    # Створюємо .env файл
+    # Створюємо .env файл з змінними середовища
     cat > "${BASE_DIR}/.env" << EOF
+# Matrix Synapse Configuration
+DOMAIN=${DOMAIN}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+GRAFANA_PASSWORD=${GRAFANA_PASSWORD:-admin123}
+
+# Cloudflare Tunnel
 CLOUDFLARE_TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+
+# Bridge Configuration
+SIGNAL_BRIDGE_ENABLED=${INSTALL_SIGNAL_BRIDGE:-false}
+WHATSAPP_BRIDGE_ENABLED=${INSTALL_WHATSAPP_BRIDGE:-false}
+DISCORD_BRIDGE_ENABLED=${INSTALL_DISCORD_BRIDGE:-false}
+
+# Monitoring
+MONITORING_ENABLED=${SETUP_MONITORING:-false}
 EOF
     
-    # Додаємо мости якщо увімкнено
+    # Створюємо директорії для конфігурацій
+    mkdir -p "${BASE_DIR}/synapse/config"
+    mkdir -p "${BASE_DIR}/nginx/conf.d"
+    mkdir -p "${BASE_DIR}/nginx/ssl"
+    mkdir -p "${BASE_DIR}/postgres/init"
+    mkdir -p "${BASE_DIR}/monitoring/prometheus"
+    mkdir -p "${BASE_DIR}/monitoring/grafana"
+    mkdir -p "${BASE_DIR}/monitoring/loki"
+    mkdir -p "${BASE_DIR}/monitoring/promtail"
+    
+    # Генеруємо конфігурацію Synapse
+    generate_synapse_docker_config
+    
+    # Генеруємо конфігурацію Nginx
+    generate_nginx_config
+    
+    # Генеруємо конфігурацію моніторингу
+    if [[ "${SETUP_MONITORING}" == "true" ]]; then
+        generate_monitoring_config
+    fi
+    
+    # Генеруємо конфігурацію мостів
     if [[ "${INSTALL_BRIDGES}" == "true" ]]; then
-        # Signal Bridge
-        if [[ "${INSTALL_SIGNAL_BRIDGE:-false}" == "true" ]]; then
-            cat >> "${compose_file}" << EOF
-
-  signal-bridge:
-    image: dock.mau.dev/mautrix/signal:latest
-    restart: unless-stopped
-    depends_on:
-      synapse:
-        condition: service_healthy
-    volumes:
-      - ./bridges/signal/config:/data
-      - ./bridges/signal/data:/signald/data
-    environment:
-      - MAUTRIX_SIGNAL_CONFIG_PATH=/data/config.yaml
-    ports:
-      - "29328:29328"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:29328/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-EOF
-        fi
-        
-        # WhatsApp Bridge
-        if [[ "${INSTALL_WHATSAPP_BRIDGE:-false}" == "true" ]]; then
-            cat >> "${compose_file}" << EOF
-
-  whatsapp-bridge:
-    image: dock.mau.dev/mautrix/whatsapp:latest
-    restart: unless-stopped
-    depends_on:
-      synapse:
-        condition: service_healthy
-    volumes:
-      - ./bridges/whatsapp/config:/data
-    environment:
-      - MAUTRIX_WHATSAPP_CONFIG_PATH=/data/config.yaml
-    ports:
-      - "29318:29318"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:29318/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-EOF
-        fi
-        
-        # Discord Bridge
-        if [[ "${INSTALL_DISCORD_BRIDGE:-false}" == "true" ]]; then
-            cat >> "${compose_file}" << EOF
-
-  discord-bridge:
-    image: dock.mau.dev/mautrix/discord:latest
-    restart: unless-stopped
-    depends_on:
-      synapse:
-        condition: service_healthy
-    volumes:
-      - ./bridges/discord/config:/data
-    environment:
-      - MAUTRIX_DISCORD_CONFIG_PATH=/data/config.yaml
-    ports:
-      - "29334:29334"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:29334/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-EOF
-        fi
+        generate_bridge_docker_configs
+    fi
+    
+    # Встановлюємо правильні права
+    chmod 644 "${compose_file}"
+    chmod 600 "${BASE_DIR}/.env"
+    
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        local actual_user_id=$(id -u "${SUDO_USER}")
+        local actual_group_id=$(id -g "${SUDO_USER}")
+        chown "${actual_user_id}:${actual_group_id}" "${compose_file}"
+        chown "${actual_user_id}:${actual_group_id}" "${BASE_DIR}/.env"
+        chown -R "${actual_user_id}:${actual_group_id}" "${BASE_DIR}"
     fi
     
     log_success "Docker Compose конфігурацію створено"
+}
+
+# Генерація конфігурації Synapse для Docker
+generate_synapse_docker_config() {
+    log_info "Генерація конфігурації Synapse для Docker"
+    
+    local synapse_config="${BASE_DIR}/synapse/config/homeserver.yaml"
+    
+    cat > "${synapse_config}" << EOF
+# Matrix Synapse Configuration for Docker
+# Generated by Matrix Synapse Installer v4.0
+
+server_name: "${DOMAIN}"
+pid_file: /data/homeserver.pid
+listeners:
+  - port: 8008
+    tls: false
+    type: http
+    x_forwarded: true
+    resources:
+      - names: [client]
+        compress: true
+      - names: [federation]
+        compress: false
+
+database:
+  name: psycopg2
+  args:
+    database: matrix
+    user: matrix
+    password: ${POSTGRES_PASSWORD}
+    host: postgres
+    cp_min: 5
+    cp_max: 10
+
+redis:
+  enabled: true
+  host: redis
+  port: 6379
+
+log_config: "/data/${DOMAIN}.log.config"
+
+media_store_path: "/data/media_store"
+
+registration_shared_secret: "${REGISTRATION_SHARED_SECRET}"
+
+report_stats: false
+
+enable_metrics: true
+metrics_port: 9090
+
+enable_room_list_search: true
+
+max_upload_size: "50M"
+
+dynamic_thumbnails: true
+thumbnail_requirements:
+  thumbnail_width: 32
+  thumbnail_height: 32
+  thumbnail_method: crop
+  thumbnail_type: image/png
+
+# Federation settings
+federation_domain_whitelist:
+  - ${DOMAIN}
+
+# Rate limiting
+rc_message:
+  per_second: 0.2
+  burst_count: 10
+
+rc_registration:
+  per_second: 0.17
+  burst_count: 3
+
+rc_login:
+  address:
+    per_second: 0.1
+    burst_count: 3
+  account:
+    per_second: 0.1
+    burst_count: 3
+  failed_attempts:
+    per_second: 0.1
+    burst_count: 3
+
+# Security settings
+trusted_key_servers:
+  - server_name: "matrix.org"
+
+# Email settings (optional)
+email:
+  enable_notifs: false
+  smtp_host: localhost
+  smtp_port: 25
+  require_transport_security: false
+  notif_from: "noreply@${DOMAIN}"
+  app_name: Matrix
+  notif_template_html: notif_mail.html
+  notif_template_text: notif_mail.txt
+
+# Password policy
+password_config:
+  localdb_enabled: true
+  policy:
+    min_length: 8
+    require_digit: true
+    require_symbol: true
+    require_lowercase: true
+    require_uppercase: true
+
+# User consent
+user_consent_version: "1.0"
+user_consent_server_notice_content:
+  msgtype: m.text
+  body: >-
+    To continue using this homeserver you must review and agree to the
+    terms and conditions at https://${DOMAIN}/_matrix/consent
+
+# Room settings
+room_invite_state_types:
+  - m.room.join_rules
+  - m.room.power_levels
+  - m.room.visibility
+  - m.room.avatar
+  - m.room.encryption
+  - m.room.name
+  - m.room.topic
+  - m.room.canonical_alias
+  - m.room.aliases
+  - m.room.history_visibility
+
+# Retention policy
+retention:
+  enabled: true
+  default_policy:
+    min_lifetime: 1d
+    max_lifetime: 1y
+  allowed_lifetime_min: 1m
+  allowed_lifetime_max: 1y
+
+# Background tasks
+background_tasks:
+  enabled: true
+  max_pending_background_tasks: 100
+
+# Event cache
+event_cache_size: "10K"
+
+# Caches
+caches:
+  global_factor: 0.5
+  sync_response_cache_duration: 2m
+
+# Experimental features
+experimental_features:
+  msc1849_enabled: true
+  msc2176_enabled: true
+  msc2409_enabled: true
+  msc2654_enabled: true
+  msc2716_enabled: true
+  msc2790_enabled: true
+  msc2836_enabled: true
+  msc2946_enabled: true
+  msc3026_enabled: true
+  msc3083_enabled: true
+  msc3244_enabled: true
+  msc3266_enabled: true
+  msc3288_enabled: true
+  msc3316_enabled: true
+  msc3401_enabled: true
+  msc3440_enabled: true
+  msc3706_enabled: true
+  msc3720_enabled: true
+  msc3786_enabled: true
+  msc3787_enabled: true
+  msc3812_enabled: true
+  msc3818_enabled: true
+  msc3819_enabled: true
+  msc3827_enabled: true
+  msc3869_enabled: true
+  msc3881_enabled: true
+  msc3882_enabled: true
+  msc3886_enabled: true
+  msc3902_enabled: true
+  msc3905_enabled: true
+  msc3906_enabled: true
+  msc3908_enabled: true
+  msc3911_enabled: true
+  msc3912_enabled: true
+  msc3916_enabled: true
+  msc3927_enabled: true
+  msc3930_enabled: true
+  msc3931_enabled: true
+  msc3932_enabled: true
+  msc3933_enabled: true
+  msc3934_enabled: true
+  msc3935_enabled: true
+  msc3936_enabled: true
+  msc3937_enabled: true
+  msc3938_enabled: true
+  msc3939_enabled: true
+  msc3940_enabled: true
+  msc3941_enabled: true
+  msc3942_enabled: true
+  msc3943_enabled: true
+  msc3944_enabled: true
+  msc3945_enabled: true
+  msc3946_enabled: true
+  msc3947_enabled: true
+  msc3948_enabled: true
+  msc3949_enabled: true
+  msc3950_enabled: true
+  msc3951_enabled: true
+  msc3952_enabled: true
+  msc3953_enabled: true
+  msc3954_enabled: true
+  msc3955_enabled: true
+  msc3956_enabled: true
+  msc3957_enabled: true
+  msc3958_enabled: true
+  msc3959_enabled: true
+  msc3960_enabled: true
+  msc3961_enabled: true
+  msc3962_enabled: true
+  msc3963_enabled: true
+  msc3964_enabled: true
+  msc3965_enabled: true
+  msc3966_enabled: true
+  msc3967_enabled: true
+  msc3968_enabled: true
+  msc3969_enabled: true
+  msc3970_enabled: true
+  msc3971_enabled: true
+  msc3972_enabled: true
+  msc3973_enabled: true
+  msc3974_enabled: true
+  msc3975_enabled: true
+  msc3976_enabled: true
+  msc3977_enabled: true
+  msc3978_enabled: true
+  msc3979_enabled: true
+  msc3980_enabled: true
+  msc3981_enabled: true
+  msc3982_enabled: true
+  msc3983_enabled: true
+  msc3984_enabled: true
+  msc3985_enabled: true
+  msc3986_enabled: true
+  msc3987_enabled: true
+  msc3988_enabled: true
+  msc3989_enabled: true
+  msc3990_enabled: true
+  msc3991_enabled: true
+  msc3992_enabled: true
+  msc3993_enabled: true
+  msc3994_enabled: true
+  msc3995_enabled: true
+  msc3996_enabled: true
+  msc3997_enabled: true
+  msc3998_enabled: true
+  msc3999_enabled: true
+  msc4000_enabled: true
+EOF
+    
+    log_success "Конфігурацію Synapse для Docker створено"
+}
+
+# Генерація конфігурації Nginx
+generate_nginx_config() {
+    log_info "Генерація конфігурації Nginx"
+    
+    local nginx_config="${BASE_DIR}/nginx/conf.d/default.conf"
+    
+    cat > "${nginx_config}" << EOF
+# Nginx Configuration for Matrix Synapse
+# Generated by Matrix Synapse Installer v4.0
+
+upstream synapse {
+    server synapse:8008;
+}
+
+upstream element {
+    server element:80;
+}
+
+server {
+    listen 80;
+    server_name ${DOMAIN};
+    
+    # Health check endpoint
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+    
+    # Matrix Client-Server API
+    location /_matrix/client/ {
+        proxy_pass http://synapse;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+    
+    # Matrix Server-Server API
+    location /_matrix/federation/ {
+        proxy_pass http://synapse;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+    
+    # Matrix Media API
+    location /_matrix/media/ {
+        proxy_pass http://synapse;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+    
+    # Element Web Client
+    location / {
+        root /usr/share/nginx/html;
+        index index.html;
+        try_files \$uri \$uri/ /index.html;
+        
+        # Cache static assets
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+    
+    # Dashboard
+    location /dashboard/ {
+        alias /usr/share/nginx/dashboard/;
+        index index.html;
+        try_files \$uri \$uri/ /dashboard/index.html;
+    }
+    
+    # Security headers
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+    add_header X-XSS-Protection "1; mode=block";
+    add_header Referrer-Policy "strict-origin-when-cross-origin";
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none';";
+}
+
+# HTTPS configuration (if SSL is enabled)
+server {
+    listen 443 ssl http2;
+    server_name ${DOMAIN};
+    
+    ssl_certificate /etc/nginx/ssl/cert.pem;
+    ssl_certificate_key /etc/nginx/ssl/key.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+    
+    # Same location blocks as HTTP
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+    
+    location /_matrix/client/ {
+        proxy_pass http://synapse;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+    
+    location /_matrix/federation/ {
+        proxy_pass http://synapse;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+    
+    location /_matrix/media/ {
+        proxy_pass http://synapse;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+    
+    location / {
+        root /usr/share/nginx/html;
+        index index.html;
+        try_files \$uri \$uri/ /index.html;
+        
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+    
+    location /dashboard/ {
+        alias /usr/share/nginx/dashboard/;
+        index index.html;
+        try_files \$uri \$uri/ /dashboard/index.html;
+    }
+    
+    # Security headers
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+    add_header X-XSS-Protection "1; mode=block";
+    add_header Referrer-Policy "strict-origin-when-cross-origin";
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none';";
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+}
+EOF
+    
+    log_success "Конфігурацію Nginx створено"
+}
+
+# Генерація конфігурації моніторингу
+generate_monitoring_config() {
+    log_info "Генерація конфігурації моніторингу"
+    
+    # Prometheus конфігурація
+    local prometheus_config="${BASE_DIR}/monitoring/prometheus/prometheus.yml"
+    
+    cat > "${prometheus_config}" << EOF
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'matrix-synapse'
+    static_configs:
+      - targets: ['synapse:9090']
+    metrics_path: /_synapse/metrics
+
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['localhost:9100']
+
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx:80']
+    metrics_path: /nginx_status
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:5432']
+    metrics_path: /metrics
+EOF
+    
+    # Grafana конфігурація
+    mkdir -p "${BASE_DIR}/monitoring/grafana/provisioning/datasources"
+    mkdir -p "${BASE_DIR}/monitoring/grafana/provisioning/dashboards"
+    
+    local grafana_datasource="${BASE_DIR}/monitoring/grafana/provisioning/datasources/prometheus.yml"
+    
+    cat > "${grafana_datasource}" << EOF
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+EOF
+    
+    # Loki конфігурація
+    local loki_config="${BASE_DIR}/monitoring/loki/local-config.yaml"
+    
+    cat > "${loki_config}" << EOF
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+ingester:
+  lifecycler:
+    address: 127.0.0.1
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+    final_sleep: 0s
+  chunk_idle_period: 5m
+  chunk_retain_period: 30s
+
+schema_config:
+  configs:
+    - from: 2020-05-15
+      store: boltdb
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  boltdb:
+    directory: /tmp/loki/index
+
+  filesystem:
+    directory: /tmp/loki/chunks
+
+limits_config:
+  enforce_metric_name: false
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+EOF
+    
+    # Promtail конфігурація
+    local promtail_config="${BASE_DIR}/monitoring/promtail/config.yml"
+    
+    cat > "${promtail_config}" << EOF
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: system
+    static_configs:
+    - targets:
+        - localhost
+      labels:
+        job: varlogs
+        __path__: /var/log/*log
+
+  - job_name: matrix
+    static_configs:
+    - targets:
+        - localhost
+      labels:
+        job: matrix
+        __path__: /var/log/matrix/*log
+EOF
+    
+    log_success "Конфігурацію моніторингу створено"
+}
+
+# Генерація конфігурацій мостів для Docker
+generate_bridge_docker_configs() {
+    log_info "Генерація конфігурацій мостів для Docker"
+    
+    # Signal Bridge
+    if [[ "${INSTALL_SIGNAL_BRIDGE:-false}" == "true" ]]; then
+        mkdir -p "${BASE_DIR}/bridges/signal/config"
+        mkdir -p "${BASE_DIR}/bridges/signal/data"
+        
+        local signal_config="${BASE_DIR}/bridges/signal/config/config.yaml"
+        
+        cat > "${signal_config}" << EOF
+# Signal Bridge Configuration
+# Generated by Matrix Synapse Installer v4.0
+
+homeserver:
+  address: http://synapse:8008
+  domain: ${DOMAIN}
+
+appservice:
+  address: http://signal-bridge:29328
+  hostname: 0.0.0.0
+  port: 29328
+  database: sqlite:///signal.db
+
+signal:
+  socket: /signald/data/signald.sock
+  username: +1234567890  # Change this to your phone number
+
+bridge:
+  username_template: "signal_{userid}"
+  displayname_template: "Signal {displayname}"
+  avatar_template: "mxc://example.com/signal_{userid}"
+  
+  command_prefix: "!signal"
+  
+  permissions:
+    "*": relay
+    "@admin:${DOMAIN}": user
+EOF
+    fi
+    
+    # WhatsApp Bridge
+    if [[ "${INSTALL_WHATSAPP_BRIDGE:-false}" == "true" ]]; then
+        mkdir -p "${BASE_DIR}/bridges/whatsapp/config"
+        
+        local whatsapp_config="${BASE_DIR}/bridges/whatsapp/config/config.yaml"
+        
+        cat > "${whatsapp_config}" << EOF
+# WhatsApp Bridge Configuration
+# Generated by Matrix Synapse Installer v4.0
+
+homeserver:
+  address: http://synapse:8008
+  domain: ${DOMAIN}
+
+appservice:
+  address: http://whatsapp-bridge:29318
+  hostname: 0.0.0.0
+  port: 29318
+  database: sqlite:///whatsapp.db
+
+whatsapp:
+  session_path: /data/session
+  qr_codes: true
+  
+bridge:
+  username_template: "whatsapp_{userid}"
+  displayname_template: "WhatsApp {displayname}"
+  avatar_template: "mxc://example.com/whatsapp_{userid}"
+  
+  command_prefix: "!whatsapp"
+  
+  permissions:
+    "*": relay
+    "@admin:${DOMAIN}": user
+EOF
+    fi
+    
+    # Discord Bridge
+    if [[ "${INSTALL_DISCORD_BRIDGE:-false}" == "true" ]]; then
+        mkdir -p "${BASE_DIR}/bridges/discord/config"
+        
+        local discord_config="${BASE_DIR}/bridges/discord/config/config.yaml"
+        
+        cat > "${discord_config}" << EOF
+# Discord Bridge Configuration
+# Generated by Matrix Synapse Installer v4.0
+
+homeserver:
+  address: http://synapse:8008
+  domain: ${DOMAIN}
+
+appservice:
+  address: http://discord-bridge:29334
+  hostname: 0.0.0.0
+  port: 29334
+  database: sqlite:///discord.db
+
+discord:
+  token: YOUR_DISCORD_BOT_TOKEN  # Change this
+  application_id: YOUR_APPLICATION_ID  # Change this
+  
+bridge:
+  username_template: "discord_{userid}"
+  displayname_template: "Discord {displayname}"
+  avatar_template: "mxc://example.com/discord_{userid}"
+  
+  command_prefix: "!discord"
+  
+  permissions:
+    "*": relay
+    "@admin:${DOMAIN}": user
+EOF
+    fi
+    
+    log_success "Конфігурації мостів для Docker створено"
 }
 
 start_matrix_services() {
@@ -485,5 +1043,108 @@ cleanup_package_cache() {
     log_success "Кеш пакетів очищено"
 }
 
+# Завантаження Element Web клієнта
+download_element_web() {
+    log_info "Завантаження Element Web клієнта"
+    
+    local element_dir="${BASE_DIR}/element"
+    local element_version="1.11.50"
+    local element_url="https://github.com/vector-im/element-web/releases/download/v${element_version}/element-v${element_version}.tar.gz"
+    
+    # Створюємо директорію
+    mkdir -p "${element_dir}"
+    
+    # Завантажуємо Element Web
+    log_info "Завантаження Element Web v${element_version}..."
+    if ! curl -L "${element_url}" | tar -xz -C "${element_dir}" --strip-components=1; then
+        log_error "Помилка завантаження Element Web"
+        return 1
+    fi
+    
+    # Створюємо конфігурацію Element
+    local config_file="${element_dir}/config.json"
+    cat > "${config_file}" << EOF
+{
+    "default_server_config": {
+        "m.homeserver": {
+            "base_url": "https://${DOMAIN}"
+        },
+        "m.identity_server": {
+            "base_url": "https://vector.im"
+        }
+    },
+    "disable_guests": true,
+    "brand": "Matrix Synapse",
+    "integrations_ui_url": "https://scalar.vector.im/",
+    "integrations_rest_url": "https://scalar.vector.im/api",
+    "integrations_widgets_urls": [
+        "https://scalar.vector.im/_matrix/integrations/v1",
+        "https://scalar.vector.im/api",
+        "https://staging.scalar.vector.im/_matrix/integrations/v1",
+        "https://staging.scalar.vector.im/api",
+        "https://develop.scalar.vector.im/_matrix/integrations/v1",
+        "https://develop.scalar.vector.im/api"
+    ],
+    "bug_report_endpoint_url": "https://element.io/bugreports/submit",
+    "uisi_autorageshake_app": "element-auto-uisi",
+    "roomDirectory": {
+        "servers": [
+            "matrix.org"
+        ]
+    },
+    "piwik": {
+        "url": "https://piwik.riot.im/",
+        "whitelistedHSUrls": ["https://matrix.org"],
+        "whitelistedISUrls": ["https://vector.im", "https://matrix.org"],
+        "siteId": 1
+    },
+    "enable_presence_by_hs_url": {
+        "https://matrix.org": false
+    },
+    "settingDefaults": {
+        "customTheme": false,
+        "showImages": true,
+        "autoplayGifsAndVideos": true,
+        "enableSyntaxHighlightLanguageDetection": true,
+        "autoplayVideo": true,
+        "enableMarkdownByDefault": true,
+        "showRedactions": true,
+        "showJoinLeaves": false,
+        "showAvatarChanges": true,
+        "showDisplaynameChanges": true,
+        "showTypingNotifications": true,
+        "autoplayAudio": true,
+        "enableSyntaxHighlightLanguageDetection": true,
+        "showImages": true,
+        "showTypingNotifications": true,
+        "showRedactions": true,
+        "showJoinLeaves": false,
+        "showAvatarChanges": true,
+        "showDisplaynameChanges": true,
+        "autoplayGifsAndVideos": true,
+        "autoplayVideo": true,
+        "enableMarkdownByDefault": true,
+        "autoplayAudio": true
+    },
+    "posthog": {
+        "projectApiKey": "phc_Jzsm6DTm6V2705XhL28eT58Q3nm8CQbeQkXdSPKTg8U",
+        "apiEndpoint": "https://s2.matrix.org/",
+        "whitelistedHSUrls": ["https://matrix.org", "https://develop.element.io", "https://app.element.io", "https://test.element.io"]
+    }
+}
+EOF
+    
+    # Встановлюємо правильні права
+    chmod -R 755 "${element_dir}"
+    
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        local actual_user_id=$(id -u "${SUDO_USER}")
+        local actual_group_id=$(id -g "${SUDO_USER}")
+        chown -R "${actual_user_id}:${actual_group_id}" "${element_dir}"
+    fi
+    
+    log_success "Element Web v${element_version} завантажено та налаштовано"
+}
+
 # Експортуємо функції
-export -f install_docker_dependencies setup_directory_structure generate_docker_compose start_matrix_services install_additional_dependencies verify_dependencies cleanup_package_cache
+export -f install_docker_dependencies setup_directory_structure generate_docker_compose start_matrix_services install_additional_dependencies verify_dependencies cleanup_package_cache download_element_web

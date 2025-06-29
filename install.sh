@@ -250,16 +250,22 @@ execute_installation() {
     # Крок 8: Генерація Docker Compose
     log_step "Створення Docker Compose конфігурації"
     generate_docker_compose
-    
-    # Крок 9: Запуск сервісів
+
+    # Крок 9: Завантаження Element Web
+    if [[ "${INSTALL_ELEMENT}" == "true" ]]; then
+        log_step "Завантаження Element Web"
+        download_element_web
+    fi
+
+    # Крок 10: Запуск сервісів
     log_step "Запуск сервісів"
     start_matrix_services
     
-    # Крок 10: Пост-інсталяційне налаштування
+    # Крок 11: Пост-інсталяційне налаштування
     log_step "Пост-інсталяційне налаштування"
     post_installation_setup
     
-    # Крок 11: Очищення кешу
+    # Крок 12: Очищення кешу
     log_step "Очищення системи"
     cleanup_package_cache
     
