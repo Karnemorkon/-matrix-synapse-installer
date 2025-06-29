@@ -1,9 +1,9 @@
 #!/bin/bash
 # ===================================================================================
-# Monitoring Module - Prometheus, Grafana, and Alertmanager setup
+# Модуль Моніторингу - Налаштування Prometheus, Grafana та Alertmanager
 # ===================================================================================
 
-# --- Functions ---
+# --- Функції ---
 setup_monitoring_stack() {
     if [[ "${SETUP_MONITORING}" != "true" ]]; then
         return 0
@@ -11,19 +11,19 @@ setup_monitoring_stack() {
     
     log_step "Налаштування системи моніторингу"
     
-    # Create monitoring directories first
+    # Спочатку створюємо директорії моніторингу
     create_monitoring_directories
     
-    # Create Prometheus configuration
+    # Створюємо конфігурацію Prometheus
     create_prometheus_config
     
-    # Create Grafana datasource
+    # Створюємо джерело даних Grafana
     create_grafana_datasource
     
-    # Generate Grafana configuration
+    # Генеруємо конфігурацію Grafana
     generate_grafana_config
     
-    # Create dashboards
+    # Створюємо дашборди
     create_grafana_dashboards
     
     log_success "Систему моніторингу налаштовано"
@@ -48,11 +48,11 @@ scrape_configs:
     metrics_path: /_synapse/metrics
 EOF
     
-    # Enable metrics in Synapse
+    # Увімкнути метрики в Synapse
     local homeserver_config="${BASE_DIR}/synapse/config/homeserver.yaml"
     if ! grep -q "enable_metrics: true" "${homeserver_config}"; then
         echo "" >> "${homeserver_config}"
-        echo "# Metrics for monitoring" >> "${homeserver_config}"
+        echo "# Метрики для моніторингу" >> "${homeserver_config}"
         echo "enable_metrics: true" >> "${homeserver_config}"
         echo "metrics_port: 9000" >> "${homeserver_config}"
     fi
@@ -88,13 +88,13 @@ create_monitoring_directories() {
         mkdir -p "$dir"
     done
     
-    # Set proper permissions
+    # Встановлюємо правильні права
     chown -R 472:472 "${BASE_DIR}/monitoring/grafana"
     chown -R 65534:65534 "${BASE_DIR}/monitoring/prometheus"
 }
 
 generate_grafana_config() {
-    # Dashboard provisioning
+    # Провайдинг дашбордів
     cat > "${BASE_DIR}/monitoring/grafana/provisioning/dashboards/dashboard.yml" << EOF
 apiVersion: 1
 
@@ -116,13 +116,13 @@ EOF
 create_grafana_dashboards() {
     local dashboard_dir="${BASE_DIR}/monitoring/grafana/dashboards"
     
-    # Matrix Synapse Dashboard
+    # Дашборд Matrix Synapse
     create_synapse_dashboard "${dashboard_dir}/synapse.json"
     
-    # System Dashboard
+    # Системний дашборд
     create_system_dashboard "${dashboard_dir}/system.json"
     
-    # PostgreSQL Dashboard
+    # Дашборд PostgreSQL
     create_postgres_dashboard "${dashboard_dir}/postgres.json"
     
     log_success "Дашборди Grafana створено"
@@ -414,5 +414,5 @@ add_monitoring_services() {
 EOF
 }
 
-# Export functions
+# Експортуємо функції
 export -f setup_monitoring_stack add_monitoring_services create_prometheus_config create_grafana_datasource

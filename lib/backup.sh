@@ -1,14 +1,14 @@
 #!/bin/bash
 # ===================================================================================
-# Backup Module - Automated backup and restore functionality
+# Модуль Резервного Копіювання - Автоматизоване резервне копіювання та відновлення
 # ===================================================================================
 
-# --- Constants ---
+# --- Константи ---
 readonly BACKUP_BASE_DIR="/DATA/matrix-backups"
 readonly BACKUP_RETENTION_DAYS=30
 readonly BACKUP_LOG="$BACKUP_BASE_DIR/backup.log"
 
-# --- Functions ---
+# --- Функції ---
 setup_backup_system() {
     if [[ "${SETUP_BACKUP}" != "true" ]]; then
         return 0
@@ -19,10 +19,10 @@ setup_backup_system() {
     local backup_dir="/DATA/matrix-backups"
     mkdir -p "${backup_dir}"
     
-    # Create backup script
+    # Створюємо скрипт резервного копіювання
     create_backup_script "${backup_dir}"
     
-    # Setup cron job
+    # Налаштовуємо cron завдання
     setup_backup_cron "${backup_dir}"
     
     log_success "Систему резервного копіювання налаштовано"
@@ -35,7 +35,7 @@ create_backup_script() {
     
     cat > "${backup_dir}/backup-matrix.sh" << EOF
 #!/bin/bash
-# Matrix Backup Script
+# Скрипт Резервного Копіювання Matrix
 
 BACKUP_DIR="${backup_dir}"
 MATRIX_DIR="${BASE_DIR}"
@@ -43,38 +43,38 @@ DATE=\$(date +%Y-%m-%d_%H-%M-%S)
 BACKUP_NAME="matrix-backup-\$DATE"
 BACKUP_PATH="\$BACKUP_DIR/\$BACKUP_NAME"
 
-# Create backup directory
+# Створюємо директорію резервного копіювання
 mkdir -p "\$BACKUP_PATH"
 
-# Log start
+# Логуємо початок
 echo "\$(date): Початок резервного копіювання Matrix" >> "\$BACKUP_DIR/backup.log"
 
-# Stop services for consistent backup
+# Зупиняємо сервіси для узгодженого резервного копіювання
 cd "\$MATRIX_DIR"
 docker compose stop
 
-# Backup configurations
+# Резервне копіювання конфігурацій
 cp -r "\$MATRIX_DIR/synapse/config" "\$BACKUP_PATH/"
 cp -r "\$MATRIX_DIR/synapse/data" "\$BACKUP_PATH/" 2>/dev/null || true
 
-# Backup docker-compose and env files
+# Резервне копіювання docker-compose та env файлів
 cp "\$MATRIX_DIR/docker-compose.yml" "\$BACKUP_PATH/" 2>/dev/null || true
 cp "\$MATRIX_DIR/.env" "\$BACKUP_PATH/" 2>/dev/null || true
 
-# Backup database
+# Резервне копіювання бази даних
 docker compose start postgres
 sleep 10
 docker compose exec -T postgres pg_dump -U matrix_user matrix_db > "\$BACKUP_PATH/database.sql"
 
-# Restart services
+# Перезапускаємо сервіси
 docker compose up -d
 
-# Create archive
+# Створюємо архів
 cd "\$BACKUP_DIR"
 tar -czf "\$BACKUP_NAME.tar.gz" "\$BACKUP_NAME"
 rm -rf "\$BACKUP_NAME"
 
-# Clean old backups (keep last 7)
+# Очищаємо старі резервні копії (зберігаємо останні 7)
 find "\$BACKUP_DIR" -name "matrix-backup-*.tar.gz" -type f -mtime +7 -delete
 
 echo "\$(date): Резервне копіювання завершено: \$BACKUP_NAME.tar.gz" >> "\$BACKUP_DIR/backup.log"
@@ -88,7 +88,7 @@ setup_backup_cron() {
     
     log_info "Налаштування автоматичного резервного копіювання..."
     
-    # Add cron job for daily backup at 2 AM
+    # Додаємо cron завдання для щоденного резервного копіювання о 2 ранку
     (crontab -l 2>/dev/null; echo "0 2 * * * ${backup_dir}/backup-matrix.sh") | crontab -
     
     log_success "Автоматичне резервне копіювання налаштовано (щодня о 2:00)"
@@ -99,86 +99,86 @@ create_restore_script() {
     
     cat > "$restore_script" << 'EOF'
 #!/bin/bash
-# Matrix Synapse Restore Script
+# Скрипт Відновлення Matrix Synapse
 
 set -euo pipefail
 
-# Configuration
+# Конфігурація
 BACKUP_DIR="/DATA/matrix-backups"
 BASE_DIR="/DATA/matrix"
 LOG_FILE="$BACKUP_DIR/restore.log"
 
-# Logging function
+# Функція логування
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
-# Usage function
+# Функція використання
 usage() {
-    echo "Usage: $0 <backup-file>"
-    echo "Example: $0 matrix-backup-20240101_120000.tar.gz"
+    echo "Використання: $0 <backup-file>"
+    echo "Приклад: $0 matrix-backup-20240101_120000.tar.gz"
     exit 1
 }
 
-# Main restore function
+# Основна функція відновлення
 main() {
     local backup_file="$1"
     
     if [[ ! -f "$BACKUP_DIR/$backup_file" ]]; then
-        log "ERROR: Backup file not found: $BACKUP_DIR/$backup_file"
+        log "ПОМИЛКА: Файл резервної копії не знайдено: $BACKUP_DIR/$backup_file"
         exit 1
     fi
     
-    log "Starting restore from: $backup_file"
+    log "Початок відновлення з: $backup_file"
     
-    # Create temporary directory
+    # Створюємо тимчасову директорію
     TEMP_DIR=$(mktemp -d)
     trap "rm -rf $TEMP_DIR" EXIT
     
-    # Extract backup
-    log "Extracting backup..."
+    # Розпаковуємо резервну копію
+    log "Розпаковуємо резервну копію..."
     tar -xzf "$BACKUP_DIR/$backup_file" -C "$TEMP_DIR"
     
-    # Stop services
-    log "Stopping Matrix services..."
+    # Зупиняємо сервіси
+    log "Зупиняємо сервіси Matrix..."
     cd "$BASE_DIR"
     docker-compose down
     
-    # Backup current configuration
-    log "Backing up current configuration..."
+    # Резервне копіювання поточної конфігурації
+    log "Резервне копіювання поточної конфігурації..."
     mv "$BASE_DIR" "$BASE_DIR.backup.$(date +%Y%m%d_%H%M%S)"
     
-    # Restore files
-    log "Restoring files..."
+    # Відновлюємо файли
+    log "Відновлюємо файли..."
     mkdir -p "$BASE_DIR"
     cp -r "$TEMP_DIR/synapse" "$BASE_DIR/"
     cp -r "$TEMP_DIR/element" "$BASE_DIR/"
     cp "$TEMP_DIR/docker-compose.yml" "$BASE_DIR/"
     cp "$TEMP_DIR/.env" "$BASE_DIR/"
     
-    # Start database
-    log "Starting PostgreSQL..."
+    # Запускаємо базу даних
+    log "Запускаємо PostgreSQL..."
     cd "$BASE_DIR"
     docker-compose up -d postgres
     sleep 10
     
-    # Restore database
-    log "Restoring database..."
+    # Відновлюємо базу даних
+    log "Відновлюємо базу даних..."
     docker-compose exec -T postgres psql -U matrix_user -d matrix_db < "$TEMP_DIR/database.sql"
     
-    # Start all services
-    log "Starting all services..."
+    # Запускаємо всі сервіси
+    log "Запускаємо всі сервіси..."
     docker-compose up -d
     
-    log "Restore completed successfully"
+    log "Відновлення завершено успішно"
 }
 
-# Check arguments
+# Перевіряємо аргументи
 if [[ $# -ne 1 ]]; then
     usage
 fi
 
-# Run main function
+# Запускаємо основну функцію
 main "$1"
 EOF
 
@@ -226,5 +226,5 @@ restore_backup() {
     fi
 }
 
-# Export functions
+# Експортуємо функції
 export -f setup_backup_system create_backup_script setup_backup_cron run_backup list_backups restore_backup

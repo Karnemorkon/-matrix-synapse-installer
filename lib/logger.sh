@@ -1,18 +1,18 @@
 #!/bin/bash
 # ===================================================================================
-# Logger Module - Centralized logging system
+# Модуль Логування - Централізована система логування
 # ===================================================================================
 
-# --- Configuration ---
-# Determine the actual user's home directory
+# --- Конфігурація ---
+# Визначаємо домашню директорію фактичного користувача
 if [[ -n "${SUDO_USER}" ]]; then
-    # Script is run with sudo, use the original user's home
+    # Скрипт запущено з sudo, використовуємо домашню директорію оригінального користувача
     ACTUAL_USER_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
     LOG_DIR="${ACTUAL_USER_HOME}/.local/share/matrix-installer/logs"
     ACTUAL_USER_ID=$(id -u "${SUDO_USER}")
     ACTUAL_GROUP_ID=$(id -g "${SUDO_USER}")
 else
-    # Script is run directly as root or without sudo
+    # Скрипт запущено безпосередньо як root або без sudo
     LOG_DIR="/var/log/matrix-installer"
     ACTUAL_USER_ID=""
     ACTUAL_GROUP_ID=""
@@ -20,25 +20,25 @@ fi
 
 readonly LOG_FILE="${LOG_DIR}/install-$(date +%Y%m%d-%H%M%S).log"
 
-# Colors for output
+# Кольори для виводу
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
 readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly PURPLE='\033[0;35m'
 readonly CYAN='\033[0;36m'
-readonly NC='\033[0m' # No Color
+readonly NC='\033[0m' # Без кольору
 
-# --- Functions ---
+# --- Функції ---
 init_logger() {
-    # Create log directory with proper permissions
+    # Створюємо директорію логів з правильними правами
     mkdir -p "${LOG_DIR}"
     
-    # If using sudo, set proper ownership
+    # Якщо використовуємо sudo, встановлюємо правильне володіння
     if [[ -n "${SUDO_USER}" && -n "${ACTUAL_USER_ID}" && -n "${ACTUAL_GROUP_ID}" ]]; then
-        # Change ownership of the entire log directory structure
+        # Змінюємо володіння всієї структури директорії логів
         chown -R "${ACTUAL_USER_ID}:${ACTUAL_GROUP_ID}" "${LOG_DIR}"
-        # Also change ownership of parent directories if they were created
+        # Також змінюємо володіння батьківських директорій якщо вони були створені
         local parent_dir="$(dirname "${LOG_DIR}")"
         if [[ -d "${parent_dir}" ]]; then
             chown "${ACTUAL_USER_ID}:${ACTUAL_GROUP_ID}" "${parent_dir}" 2>/dev/null || true
@@ -51,7 +51,7 @@ init_logger() {
     
     touch "${LOG_FILE}"
     
-    # Set proper ownership for the log file
+    # Встановлюємо правильне володіння для файлу логу
     if [[ -n "${SUDO_USER}" && -n "${ACTUAL_USER_ID}" && -n "${ACTUAL_GROUP_ID}" ]]; then
         chown "${ACTUAL_USER_ID}:${ACTUAL_GROUP_ID}" "${LOG_FILE}"
     fi
@@ -59,7 +59,7 @@ init_logger() {
     log_info "Ініціалізація системи логування"
     log_info "Файл логу: ${LOG_FILE}"
     
-    # Log system information
+    # Логуємо інформацію про систему
     log_info "Користувач: ${SUDO_USER:-root}"
     log_info "Робоча директорія: $(pwd)"
     log_info "Версія скрипта: Matrix Synapse Installer 3.0"
@@ -110,15 +110,15 @@ log_debug() {
 
 log_command() {
     local command="$1"
-    log_debug "Executing: ${command}"
+    log_debug "Виконується: ${command}"
     if eval "${command}" >> "${LOG_FILE}" 2>&1; then
-        log_debug "Command succeeded: ${command}"
+        log_debug "Команда виконана успішно: ${command}"
         return 0
     else
-        log_error "Command failed: ${command}"
+        log_error "Команда завершилася помилкою: ${command}"
         return 1
     fi
 }
 
-# Export functions
+# Експортуємо функції
 export -f init_logger log_raw log_info log_success log_warning log_error log_step log_debug log_command

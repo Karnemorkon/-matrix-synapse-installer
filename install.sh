@@ -1,29 +1,29 @@
 #!/bin/bash
 # ===================================================================================
-# Matrix Synapse Auto Installer - Main Entry Point
-# Version: 3.0 Refactored
+# Matrix Synapse Автоматичний Інсталятор - Головна Точка Входу
+# Версія: 3.0 Рефакторована
 # ===================================================================================
 
 set -euo pipefail
 
-# --- Configuration ---
+# --- Конфігурація ---
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_NAME="Matrix Synapse Installer"
 readonly PROJECT_VERSION="3.0"
 
-# --- Early Configuration Path Setup ---
-# This needs to be done before sourcing modules to ensure consistent paths
+# --- Раннє Налаштування Шляхів Конфігурації ---
+# Це потрібно зробити перед підключенням модулів для забезпечення узгоджених шляхів
 if [[ -n "${SUDO_USER:-}" ]]; then
-    # Script is run with sudo, use the original user's home
+    # Скрипт запущено з sudo, використовуємо домашню директорію оригінального користувача
     ACTUAL_USER_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
     CONFIG_DIR="${ACTUAL_USER_HOME}/.config/matrix-installer"
 else
-    # Script is run directly as root
+    # Скрипт запущено безпосередньо як root
     CONFIG_DIR="/root/.config/matrix-installer"
 fi
 readonly CONFIG_FILE="${CONFIG_DIR}/config.conf"
 
-# Source all modules
+# Підключаємо всі модулі
 source "${SCRIPT_DIR}/lib/logger.sh"
 source "${SCRIPT_DIR}/lib/config.sh"
 source "${SCRIPT_DIR}/lib/validator.sh"
@@ -34,19 +34,19 @@ source "${SCRIPT_DIR}/lib/monitoring.sh"
 source "${SCRIPT_DIR}/lib/backup.sh"
 source "${SCRIPT_DIR}/lib/security.sh"
 
-# --- Main Function ---
+# --- Головна Функція ---
 main() {
-    # Initialize logging
+    # Ініціалізація логування
     init_logger
     
-    # Show banner
+    # Показуємо банер
     show_banner
     
-    # Check prerequisites
+    # Перевіряємо передумови
     check_root_privileges
     validate_system_requirements
     
-    # Load or create configuration
+    # Завантажуємо або створюємо конфігурацію
     if [[ -f "${CONFIG_FILE}" ]]; then
         log_info "Знайдено існуючу конфігурацію: ${CONFIG_FILE}"
         
@@ -63,10 +63,10 @@ main() {
         interactive_config
     fi
     
-    # Validate configuration
+    # Валідуємо конфігурацію
     validate_config
     
-    # Show configuration summary
+    # Показуємо підсумок конфігурації
     show_config_summary
     
     CONTINUE_INSTALL=$(ask_yes_no "Продовжити встановлення?" "false")
@@ -75,14 +75,14 @@ main() {
         exit 0
     fi
     
-    # Execute installation steps
+    # Виконуємо кроки встановлення
     execute_installation
     
-    # Show completion message
+    # Показуємо повідомлення про завершення
     show_completion_message
 }
 
-# --- Helper Functions ---
+# --- Допоміжні Функції ---
 show_banner() {
     cat << 'EOF'
 ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -100,19 +100,19 @@ EOF
 execute_installation() {
     log_info "Початок встановлення Matrix Synapse"
     
-    # Step 1: Install dependencies
+    # Крок 1: Встановлення залежностей
     log_step "Встановлення залежностей"
     install_docker_dependencies
     
-    # Step 2: Setup directory structure
+    # Крок 2: Налаштування структури директорій
     log_step "Створення структури директорій"
     setup_directory_structure
     
-    # Step 3: Generate configurations
+    # Крок 3: Генерація конфігурацій
     log_step "Генерація конфігураційних файлів"
     generate_synapse_config
     
-    # Generate Element config if enabled
+    # Генеруємо конфігурацію Element якщо увімкнено
     if [[ "${INSTALL_ELEMENT}" == "true" ]]; then
         generate_element_config
     fi
@@ -121,31 +121,31 @@ execute_installation() {
         generate_bridge_configs
     fi
     
-    # Step 4: Setup security
+    # Крок 4: Налаштування безпеки
     log_step "Налаштування безпеки"
     setup_security
     
-    # Step 5: Setup monitoring
+    # Крок 5: Налаштування моніторингу
     if [[ "${SETUP_MONITORING}" == "true" ]]; then
         log_step "Налаштування моніторингу"
         setup_monitoring_stack
     fi
     
-    # Step 6: Setup backup system
+    # Крок 6: Налаштування системи резервного копіювання
     if [[ "${SETUP_BACKUP}" == "true" ]]; then
         log_step "Налаштування системи резервного копіювання"
         setup_backup_system
     fi
     
-    # Step 7: Generate Docker Compose
+    # Крок 7: Генерація Docker Compose
     log_step "Створення Docker Compose конфігурації"
     generate_docker_compose
     
-    # Step 8: Start services
+    # Крок 8: Запуск сервісів
     log_step "Запуск сервісів"
     start_matrix_services
     
-    # Step 9: Post-installation setup
+    # Крок 9: Пост-інсталяційне налаштування
     log_step "Пост-інсталяційне налаштування"
     post_installation_setup
     
@@ -181,7 +181,7 @@ $(get_service_urls)
 EOF
 }
 
-# Check if script is run directly
+# Перевіряємо чи скрипт запущено безпосередньо
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"
 fi

@@ -1,28 +1,28 @@
 #!/bin/bash
 # ===================================================================================
-# Matrix Module - Handles Matrix Synapse configuration and setup
+# Модуль Matrix - Обробка конфігурації та налаштування Matrix Synapse
 # ===================================================================================
 
-# --- Functions ---
+# --- Функції ---
 setup_directory_structure() {
     log_step "Створення структури директорій"
     
-    # Create main directories
+    # Створюємо основні директорії
     mkdir -p "${BASE_DIR}"/{data,config,logs,backups,bin,docs}
     mkdir -p "${BASE_DIR}/data"/{synapse,postgres,prometheus,grafana}
     mkdir -p "${BASE_DIR}/config"/{synapse,prometheus,grafana,nginx}
     
-    # Create Element directory if needed
+    # Створюємо директорію Element якщо потрібно
     if [[ "${INSTALL_ELEMENT}" == "true" ]]; then
         mkdir -p "${BASE_DIR}/element"
     fi
     
-    # Create bridges directories if needed
+    # Створюємо директорії мостів якщо потрібно
     if [[ "${INSTALL_BRIDGES}" == "true" ]]; then
         mkdir -p "${BASE_DIR}/bridges"/{telegram,whatsapp,discord}
     fi
     
-    # Set proper permissions
+    # Встановлюємо правильні права
     chown -R 991:991 "${BASE_DIR}/data/synapse"
     chmod -R 755 "${BASE_DIR}"
     
@@ -35,7 +35,7 @@ generate_synapse_config() {
     local config_dir="${BASE_DIR}/config/synapse"
     local data_dir="${BASE_DIR}/data/synapse"
     
-    # Generate initial config if it doesn't exist
+    # Генеруємо початкову конфігурацію якщо вона не існує
     if [[ ! -f "${data_dir}/homeserver.yaml" ]]; then
         log_info "Створення початкової конфігурації..."
         docker run --rm \
@@ -45,7 +45,7 @@ generate_synapse_config() {
             matrixdotorg/synapse:latest generate
     fi
     
-    # Configure database
+    # Налаштовуємо базу даних
     log_info "Налаштування бази даних..."
     cat > "${config_dir}/database.yaml" << EOF
 database:
@@ -60,7 +60,7 @@ database:
     cp_max: 10
 EOF
     
-    # Configure registration and federation
+    # Налаштовуємо реєстрацію та федерацію
     log_info "Налаштування реєстрації та федерації..."
     cat > "${config_dir}/registration.yaml" << EOF
 enable_registration: ${ALLOW_PUBLIC_REGISTRATION}
@@ -72,7 +72,7 @@ EOF
         echo "federation_domain_whitelist: []" >> "${config_dir}/registration.yaml"
     fi
     
-    # Create logging config
+    # Створюємо конфігурацію логування
     cat > "${config_dir}/logging.yaml" << EOF
 version: 1
 formatters:
@@ -162,20 +162,20 @@ EOF
 post_installation_setup() {
     log_info "Виконання пост-інсталяційних налаштувань..."
     
-    # Wait for services to start
+    # Чекаємо поки сервіси запустяться
     sleep 10
     
-    # Check if Synapse is running
+    # Перевіряємо чи Synapse запущений
     if docker compose -f "${BASE_DIR}/docker-compose.yml" ps synapse | grep -q "Up"; then
         log_success "Synapse запущено успішно"
     else
         log_warning "Synapse може не запуститися. Перевірте логи: docker compose -f ${BASE_DIR}/docker-compose.yml logs synapse"
     fi
     
-    # Create control script
+    # Створюємо скрипт контролю
     create_control_script
     
-    # Copy documentation
+    # Копіюємо документацію
     cp "${SCRIPT_DIR}/README.md" "${BASE_DIR}/docs/" 2>/dev/null || true
     cp "${SCRIPT_DIR}/docs/"* "${BASE_DIR}/docs/" 2>/dev/null || true
     
@@ -187,7 +187,7 @@ create_control_script() {
     
     cat > "${control_script}" << 'EOF'
 #!/bin/bash
-# Matrix Control Script
+# Скрипт Контролю Matrix
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${BASE_DIR}/docker-compose.yml"
@@ -282,5 +282,5 @@ get_service_urls() {
     echo -e "${urls}"
 }
 
-# Export functions
+# Експортуємо функції
 export -f setup_directory_structure generate_synapse_config generate_element_config post_installation_setup create_control_script get_service_urls

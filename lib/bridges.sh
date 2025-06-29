@@ -1,12 +1,12 @@
 #!/bin/bash
 # ===================================================================================
-# Bridges Module - Matrix bridge configuration
+# Модуль Мостів - Конфігурація мостів Matrix
 # ===================================================================================
 
-# --- Constants ---
+# --- Константи ---
 readonly MAUTRIX_REGISTRY="dock.mau.dev/mautrix"
 
-# --- Bridge Configuration ---
+# --- Конфігурація Мостів ---
 declare -A BRIDGE_IMAGES=(
     ["signal"]="dock.mau.dev/mautrix/signal:latest"
     ["whatsapp"]="dock.mau.dev/mautrix/whatsapp:latest"
@@ -28,7 +28,7 @@ declare -A BRIDGE_APP_IDS=(
     [discord]="io.mau.bridge.discord"
 )
 
-# --- Functions ---
+# --- Функції ---
 generate_bridge_configs() {
     if [[ "${INSTALL_BRIDGES}" != "true" ]]; then
         return 0
@@ -86,20 +86,20 @@ setup_bridge() {
     
     log_info "Налаштування моста: $bridge_name"
     
-    # Create directories
+    # Створюємо директорії
     mkdir -p "$config_dir"
     mkdir -p "$data_dir"
     
-    # Generate bridge configuration
+    # Генеруємо конфігурацію моста
     generate_bridge_config "$bridge_name" "$config_dir"
     
-    # Generate registration file
+    # Генеруємо файл реєстрації
     generate_registration_file "$bridge_name" "$config_dir"
     
-    # Create documentation
+    # Створюємо документацію
     create_bridge_documentation "$bridge_name" "$bridge_dir"
     
-    # Set proper permissions
+    # Встановлюємо правильні права
     chown -R 991:991 "$bridge_dir" 2>/dev/null || true
     chmod -R 750 "$bridge_dir"
     
@@ -402,7 +402,7 @@ namespaces:
   rooms: []
 EOF
     
-    # Add registration file to Synapse config
+    # Додаємо файл реєстрації до конфігурації Synapse
     add_bridge_to_synapse "$registration_file"
     
     log_success "Файл реєстрації для $bridge_name створено"
@@ -412,7 +412,7 @@ add_bridge_to_synapse() {
     local registration_file="$1"
     local homeserver_config="$BASE_DIR/synapse/config/homeserver.yaml"
     
-    # Add registration file to app_service_config_files if not already present
+    # Додаємо файл реєстрації до app_service_config_files якщо він ще не присутній
     if ! grep -q "$registration_file" "$homeserver_config"; then
         sed -i "/^app_service_config_files:/a\\  - $registration_file" "$homeserver_config"
     fi
@@ -666,24 +666,24 @@ create_bridge_registration_file() {
     local registration_file="${BASE_DIR}/bridges/bridges-registration.yaml"
     
     cat > "${registration_file}" << EOF
-# Matrix Bridges Registration File
-# Generated on $(date)
-# This file contains registration information for all configured bridges
+# Файл реєстрації мостів Matrix
+# Згенеровано $(date)
+# Цей файл містить інформацію про реєстрацію для всіх налаштованих мостів
 
-# Add this to your Synapse homeserver.yaml:
+# Додайте це до вашого Synapse homeserver.yaml:
 # app_service_config_files:
 #   - /path/to/bridges/bridges-registration.yaml
 
-# Bridge registrations will be added here during bridge setup
+# Реєстрації мостів будуть додані сюди під час налаштування мостів
 EOF
     
     # Додаємо реєстрації для кожного встановленого моста
     if [[ "${INSTALL_SIGNAL_BRIDGE:-false}" == "true" ]]; then
         cat >> "${registration_file}" << EOF
 
-# Signal Bridge Registration
-# File: ${BASE_DIR}/bridges/signal/registration.yaml
-# Add this line to app_service_config_files in homeserver.yaml:
+# Реєстрація Signal Bridge
+# Файл: ${BASE_DIR}/bridges/signal/registration.yaml
+# Додайте цей рядок до app_service_config_files в homeserver.yaml:
 #   - ${BASE_DIR}/bridges/signal/registration.yaml
 EOF
     fi
@@ -691,9 +691,9 @@ EOF
     if [[ "${INSTALL_WHATSAPP_BRIDGE:-false}" == "true" ]]; then
         cat >> "${registration_file}" << EOF
 
-# WhatsApp Bridge Registration
-# File: ${BASE_DIR}/bridges/whatsapp/registration.yaml
-# Add this line to app_service_config_files in homeserver.yaml:
+# Реєстрація WhatsApp Bridge
+# Файл: ${BASE_DIR}/bridges/whatsapp/registration.yaml
+# Додайте цей рядок до app_service_config_files в homeserver.yaml:
 #   - ${BASE_DIR}/bridges/whatsapp/registration.yaml
 EOF
     fi
@@ -701,9 +701,9 @@ EOF
     if [[ "${INSTALL_DISCORD_BRIDGE:-false}" == "true" ]]; then
         cat >> "${registration_file}" << EOF
 
-# Discord Bridge Registration
-# File: ${BASE_DIR}/bridges/discord/registration.yaml
-# Add this line to app_service_config_files in homeserver.yaml:
+# Реєстрація Discord Bridge
+# Файл: ${BASE_DIR}/bridges/discord/registration.yaml
+# Додайте цей рядок до app_service_config_files в homeserver.yaml:
 #   - ${BASE_DIR}/bridges/discord/registration.yaml
 EOF
     fi
@@ -712,5 +712,5 @@ EOF
     log_info "Додайте шляхи до реєстраційних файлів у homeserver.yaml після налаштування мостів"
 }
 
-# Export functions
+# Експортуємо функції
 export -f generate_bridge_configs setup_bridge add_bridge_services

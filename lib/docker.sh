@@ -1,43 +1,43 @@
 #!/bin/bash
 # ===================================================================================
-# Docker Module - Docker installation and management
+# Модуль Docker - Встановлення та управління Docker
 # ===================================================================================
 
-# --- Configuration ---
+# --- Конфігурація ---
 readonly DOCKER_COMPOSE_VERSION="2.24.0"
 readonly DOCKER_GPG_KEY_URL="https://download.docker.com/linux/ubuntu/gpg"
 readonly DOCKER_REPO_URL="https://download.docker.com/linux/ubuntu"
 
-# --- Functions ---
+# --- Функції ---
 install_docker_dependencies() {
     log_step "Встановлення Docker залежностей"
     
-    # Update package lists
+    # Оновлюємо списки пакетів
     log_info "Оновлення списків пакетів..."
     if ! log_command "apt update -y"; then
         log_error "Помилка оновлення пакетів"
         return 1
     fi
     
-    # Install basic packages
+    # Встановлюємо базові пакети
     log_info "Встановлення базових пакетів..."
     if ! log_command "apt install -y curl apt-transport-https ca-certificates gnupg lsb-release"; then
         log_error "Помилка встановлення базових пакетів"
         return 1
     fi
     
-    # Install Docker
+    # Встановлюємо Docker
     if ! systemctl is-active --quiet docker; then
         log_info "Встановлення Docker Engine..."
         
-        # Detect OS
+        # Визначаємо ОС
         if [[ -f /etc/debian_version ]]; then
             # Debian/Ubuntu
             install -m 0755 -d /etc/apt/keyrings
             curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
             chmod a+r /etc/apt/keyrings/docker.gpg
             
-            # Add Docker repository
+            # Додаємо репозиторій Docker
             echo \
                 "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
                 $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
@@ -47,7 +47,7 @@ install_docker_dependencies() {
             exit 1
         fi
         
-        # Install Docker packages
+        # Встановлюємо пакети Docker
         if ! log_command "apt update -y"; then
             log_error "Помилка оновлення після додавання репозиторію Docker"
             return 1
@@ -58,7 +58,7 @@ install_docker_dependencies() {
             return 1
         fi
         
-        # Start and enable Docker
+        # Запускаємо та увімкнуємо Docker
         systemctl start docker
         systemctl enable docker
         
@@ -67,7 +67,7 @@ install_docker_dependencies() {
         log_success "Docker вже встановлено"
     fi
     
-    # Verify Docker Compose
+    # Перевіряємо Docker Compose
     if docker compose version >> "${LOG_FILE}" 2>&1; then
         log_success "Docker Compose доступний"
     else
@@ -79,17 +79,17 @@ install_docker_dependencies() {
 setup_directory_structure() {
     log_step "Створення структури директорій"
     
-    # Create base directory
+    # Створюємо базову директорію
     mkdir -p "${BASE_DIR}"
     
-    # Create subdirectories
+    # Створюємо піддиректорії
     mkdir -p "${BASE_DIR}/synapse/config"
     mkdir -p "${BASE_DIR}/synapse/data"
     mkdir -p "${BASE_DIR}/element"
     mkdir -p "${BASE_DIR}/docs"
     mkdir -p "${BASE_DIR}/bin"
     
-    # Create bridge directories if needed
+    # Створюємо директорії мостів якщо потрібно
     if [[ "${INSTALL_BRIDGES}" == "true" ]]; then
         mkdir -p "${BASE_DIR}/signal-bridge/config"
         mkdir -p "${BASE_DIR}/whatsapp-bridge/config"
@@ -97,7 +97,7 @@ setup_directory_structure() {
         mkdir -p "${BASE_DIR}/discord-bridge/config"
     fi
     
-    # Create monitoring directories if needed
+    # Створюємо директорії моніторингу якщо потрібно
     if [[ "${SETUP_MONITORING}" == "true" ]]; then
         mkdir -p "${BASE_DIR}/monitoring/prometheus"
         mkdir -p "${BASE_DIR}/monitoring/grafana/dashboards"
@@ -166,7 +166,7 @@ services:
       - "8080:80"
 EOF
 
-    # Add Element Web if enabled
+    # Додаємо Element Web якщо увімкнено
     if [[ "${INSTALL_ELEMENT}" == "true" ]]; then
         cat >> "${compose_file}" << EOF
 
@@ -180,7 +180,7 @@ EOF
 EOF
     fi
     
-    # Add Cloudflare Tunnel if enabled
+    # Додаємо Cloudflare Tunnel якщо увімкнено
     if [[ "${USE_CLOUDFLARE_TUNNEL}" == "true" ]]; then
         cat >> "${compose_file}" << EOF
 
@@ -193,7 +193,7 @@ EOF
 EOF
     fi
     
-    # Add monitoring if enabled
+    # Додаємо моніторинг якщо увімкнено
     if [[ "${SETUP_MONITORING}" == "true" ]]; then
         cat >> "${compose_file}" << EOF
 
@@ -226,7 +226,7 @@ EOF
 EOF
     fi
     
-    # Add volumes section only if monitoring is enabled
+    # Додаємо секцію volumes тільки якщо моніторинг увімкнено
     if [[ "${SETUP_MONITORING}" == "true" ]]; then
         cat >> "${compose_file}" << EOF
 
@@ -236,13 +236,13 @@ volumes:
 EOF
     fi
     
-    # Create .env file
+    # Створюємо .env файл
     cat > "${BASE_DIR}/.env" << EOF
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 CLOUDFLARE_TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
 EOF
     
-    # Add bridges if enabled
+    # Додаємо мости якщо увімкнено
     if [[ "${INSTALL_BRIDGES}" == "true" ]]; then
         # Signal Bridge
         if [[ "${INSTALL_SIGNAL_BRIDGE:-false}" == "true" ]]; then
@@ -326,7 +326,7 @@ start_matrix_services() {
     
     cd "${BASE_DIR}"
     
-    # Validate docker-compose.yml first
+    # Спочатку валідуємо docker-compose.yml
     log_info "Перевірка синтаксису Docker Compose файлу..."
     if ! docker compose config > /dev/null 2>&1; then
         log_error "Помилка в синтаксисі Docker Compose файлу"
@@ -335,25 +335,25 @@ start_matrix_services() {
         return 1
     fi
     
-    # Pull images with progress
+    # Завантажуємо образи з прогресом
     log_info "Завантаження Docker образів..."
     log_info "Це може зайняти кілька хвилин залежно від швидкості інтернету..."
     
-    # Show progress for docker pull
+    # Показуємо прогрес для docker pull
     if ! docker compose pull 2>&1 | tee -a "${LOG_FILE}"; then
         log_error "Помилка завантаження Docker образів"
         log_info "Перевірте підключення до інтернету та спробуйте ще раз"
         return 1
     fi
     
-    # Start services
+    # Запускаємо сервіси
     log_info "Запуск сервісів..."
     if ! docker compose up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_error "Помилка запуску сервісів"
         return 1
     fi
     
-    # Wait for Synapse to be ready
+    # Чекаємо поки Synapse буде готовий
     log_info "Очікування запуску Synapse..."
     local max_attempts=30
     local attempt=1
@@ -374,5 +374,5 @@ start_matrix_services() {
     return 1
 }
 
-# Export functions
+# Експортуємо функції
 export -f install_docker_dependencies setup_directory_structure generate_docker_compose start_matrix_services

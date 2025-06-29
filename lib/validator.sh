@@ -1,9 +1,9 @@
 #!/bin/bash
 # ===================================================================================
-# Validator Module - System requirements and input validation
+# Модуль Валідації - Системні вимоги та валідація введення
 # ===================================================================================
 
-# --- Functions ---
+# --- Функції ---
 check_root_privileges() {
     if [[ $EUID -ne 0 ]]; then
         log_error "Цей скрипт потрібно запускати з правами root або через sudo"
@@ -15,13 +15,13 @@ check_root_privileges() {
 validate_system_requirements() {
     log_step "Перевірка системних вимог"
     
-    # Check OS
+    # Перевіряємо ОС
     if ! command -v apt &> /dev/null; then
         log_error "Підтримуються лише системи на базі Debian/Ubuntu"
         exit 1
     fi
     
-    # Check kernel version
+    # Перевіряємо версію ядра
     local kernel_version=$(uname -r | cut -d. -f1,2)
     local min_kernel="4.19"
     if [[ "$(printf '%s\n' "$min_kernel" "$kernel_version" | sort -V | head -n1)" != "$min_kernel" ]]; then
@@ -30,7 +30,7 @@ validate_system_requirements() {
         log_success "Версія ядра підтримується (${kernel_version})"
     fi
     
-    # Check RAM
+    # Перевіряємо RAM
     local total_ram_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
     local total_ram_gb=$((total_ram_kb / 1024 / 1024))
     local min_ram_gb=2
@@ -46,7 +46,7 @@ validate_system_requirements() {
         log_success "RAM: достатньо (${total_ram_gb}GB >= ${min_ram_gb}GB)"
     fi
     
-    # Check disk space
+    # Перевіряємо дискове місце
     local available_space_kb=$(df / | tail -1 | awk '{print $4}')
     local available_space_gb=$((available_space_kb / 1024 / 1024))
     local min_space_gb=10
@@ -59,7 +59,7 @@ validate_system_requirements() {
         log_success "Дисковий простір: достатньо (${available_space_gb}GB >= ${min_space_gb}GB)"
     fi
     
-    # Check architecture
+    # Перевіряємо архітектуру
     local arch=$(uname -m)
     log_info "Архітектура процесора: $arch"
     if [[ "$arch" != "x86_64" && "$arch" != "aarch64" && "$arch" != "arm64" ]]; then
@@ -68,14 +68,14 @@ validate_system_requirements() {
         log_success "Архітектура процесора підтримується"
     fi
     
-    # Check Docker availability
+    # Перевіряємо наявність Docker
     if command -v docker &> /dev/null; then
         log_success "Docker вже встановлено"
     else
         log_info "Docker буде встановлено під час інсталяції"
     fi
     
-    # Check network connectivity
+    # Перевіряємо мережеве з'єднання
     if ping -c 1 8.8.8.8 &> /dev/null; then
         log_success "Мережеве з'єднання працює"
     else
@@ -101,5 +101,5 @@ validate_email() {
     return 0
 }
 
-# Export functions
+# Експортуємо функції
 export -f check_root_privileges validate_system_requirements validate_domain validate_email
