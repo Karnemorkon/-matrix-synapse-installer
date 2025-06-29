@@ -244,7 +244,7 @@ execute_installation() {
     # Крок 7: Налаштування веб інтерфейсу
     if [[ "${WEB_DASHBOARD_ENABLED}" == "true" ]]; then
         log_step "Налаштування веб інтерфейсу"
-        setup_web_dashboard
+        log_info "Веб інтерфейс буде доступний через Nginx контейнер"
     fi
     
     # Крок 8: Генерація Docker Compose
@@ -272,83 +272,6 @@ execute_installation() {
     log_success "Встановлення завершено успішно!"
 }
 
-# --- Налаштування веб інтерфейсу ---
-setup_web_dashboard() {
-    log_info "Налаштування веб інтерфейсу управління"
-    
-    # Створюємо директорію для веб інтерфейсу
-    mkdir -p "${BASE_DIR}/web"
-    
-    # Копіюємо файли веб інтерфейсу
-    if [[ -d "${SCRIPT_DIR}/web" ]]; then
-        cp -r "${SCRIPT_DIR}/web"/* "${BASE_DIR}/web/"
-        log_success "Файли веб інтерфейсу скопійовано"
-    else
-        log_warning "Директорія web не знайдена, створюю базовий інтерфейс"
-        create_basic_web_interface
-    fi
-    
-    # Встановлюємо правильні права
-    chmod -R 755 "${BASE_DIR}/web"
-    
-    if [[ -n "${SUDO_USER:-}" ]]; then
-        local actual_user_id=$(id -u "${SUDO_USER}")
-        local actual_group_id=$(id -g "${SUDO_USER}")
-        chown -R "${actual_user_id}:${actual_group_id}" "${BASE_DIR}/web"
-    fi
-    
-    log_success "Веб інтерфейс налаштовано"
-}
-
-# --- Створення базового веб інтерфейсу ---
-create_basic_web_interface() {
-    mkdir -p "${BASE_DIR}/web/dashboard"
-    
-    # Створюємо простий HTML файл
-    cat > "${BASE_DIR}/web/dashboard/index.html" << 'EOF'
-<!DOCTYPE html>
-<html lang="uk">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Matrix Synapse Dashboard</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        .container { max-width: 800px; margin: 0 auto; }
-        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
-        .online { background: #d4edda; color: #155724; }
-        .offline { background: #f8d7da; color: #721c24; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🚀 Matrix Synapse Dashboard</h1>
-        <div id="status" class="status">Перевірка статусу...</div>
-        <p>Веб інтерфейс у розробці. Використовуйте CLI команди для управління.</p>
-    </div>
-    <script>
-        fetch('/api/status')
-            .then(response => response.json())
-            .then(data => {
-                const statusDiv = document.getElementById('status');
-                if (data.status === 'online') {
-                    statusDiv.className = 'status online';
-                    statusDiv.textContent = '✅ Система працює';
-                } else {
-                    statusDiv.className = 'status offline';
-                    statusDiv.textContent = '❌ Система недоступна';
-                }
-            })
-            .catch(() => {
-                document.getElementById('status').className = 'status offline';
-                document.getElementById('status').textContent = '❌ Помилка підключення';
-            });
-    </script>
-</body>
-</html>
-EOF
-}
-
 show_completion_message() {
     cat << EOF
 
@@ -364,8 +287,8 @@ $(get_service_urls)
 
 🌐 ВЕБ ІНТЕРФЕЙС:
 $(if [[ "${WEB_DASHBOARD_ENABLED}" == "true" ]]; then
-    echo "   Dashboard: http://${DOMAIN}:${WEB_DASHBOARD_PORT}"
-    echo "   API: http://${DOMAIN}:${WEB_DASHBOARD_PORT}/api"
+    echo "   Dashboard: http://${DOMAIN}/dashboard"
+    echo "   API: http://${DOMAIN}/api"
 else
     echo "   Веб інтерфейс вимкнено"
 fi)
@@ -381,11 +304,16 @@ fi)
 
 👤 СТВОРЕННЯ ПЕРШОГО КОРИСТУВАЧА:
    cd ${BASE_DIR}
-   ./bin/matrix-control.sh user create admin
+   docker compose exec synapse register_new_matrix_user -c /data/homeserver.yaml http://localhost:8008
 
 ⚙️ ЗМІННІ СЕРЕДОВИЩА:
    Файл .env створено: ${BASE_DIR}/.env
    Використовуйте змінні середовища для автоматизації
+
+🐳 DOCKER COMPOSE:
+   cd ${BASE_DIR}
+   docker compose up -d
+   docker compose logs -f
 
 ✅ Система готова до використання!
 EOF

@@ -115,7 +115,7 @@ done
 6. **Налаштування безпеки** - `setup_security()`
 7. **Моніторинг** - `setup_monitoring_stack()` (якщо увімкнено)
 8. **Резервне копіювання** - `setup_backup_system()` (якщо увімкнено)
-9. **Веб інтерфейс** - `setup_web_dashboard()` (якщо увімкнено)
+9. **Веб інтерфейс** - Налаштування через Nginx контейнер (якщо увімкнено)
 10. **Docker Compose** - `generate_docker_compose()`
 11. **Запуск сервісів** - `start_matrix_services()`
 12. **Пост-інсталяція** - `post_installation_setup()`

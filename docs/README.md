@@ -63,8 +63,8 @@ matrix-synapse-installer/
 │   ├── validator.sh          # Валідація
 │   └── logger.sh             # Логування
 ├── 📁 docs/                   # Документація
-├── 📁 examples/               # Приклади конфігурацій
-├── 📁 tests/                  # Тести
+├── 📁 web/                    # Веб-інтерфейс управління
+└── 📁 tests/                  # Тести
 └── install.sh                # Головний інсталятор
 ```
 
