@@ -1,441 +1,168 @@
-// JavaScript для Matrix Dashboard
+// --- Перемикач теми (світла/темна) ---
+const themeToggle = document.getElementById('theme-toggle');
+const body = document.body;
 
-class MatrixDashboard {
-    constructor() {
-        this.apiBase = '/api';
-        this.currentSection = 'overview';
-        this.updateInterval = null;
-        this.init();
-    }
-
-    init() {
-        this.setupNavigation();
-        this.loadInitialData();
-        this.setupEventListeners();
-        this.startAutoRefresh();
-    }
-
-    setupNavigation() {
-        const navLinks = document.querySelectorAll('.nav-link');
-        navLinks.forEach(link => {
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                const target = link.getAttribute('href').substring(1);
-                this.showSection(target);
-            });
-        });
-    }
-
-    showSection(sectionId) {
-        // Приховуємо всі секції
-        document.querySelectorAll('.content-section').forEach(section => {
-            section.classList.remove('active');
-        });
-
-        // Показуємо потрібну секцію
-        const targetSection = document.getElementById(sectionId);
-        if (targetSection) {
-            targetSection.classList.add('active');
-        }
-
-        // Оновлюємо активне посилання
-        document.querySelectorAll('.nav-link').forEach(link => {
-            link.classList.remove('active');
-        });
-        document.querySelector(`[href="#${sectionId}"]`).classList.add('active');
-
-        this.currentSection = sectionId;
-        this.loadSectionData(sectionId);
-    }
-
-    async loadInitialData() {
-        await this.checkSystemStatus();
-        await this.loadOverviewData();
-    }
-
-    async checkSystemStatus() {
-        try {
-            const response = await fetch(`${this.apiBase}/status`);
-            const data = await response.json();
-            
-            const statusDot = document.querySelector('.status-dot');
-            const statusText = document.querySelector('.status-text');
-            
-            if (data.status === 'online') {
-                statusDot.className = 'status-dot online';
-                statusText.textContent = 'Онлайн';
-            } else {
-                statusDot.className = 'status-dot offline';
-                statusText.textContent = 'Офлайн';
-            }
-        } catch (error) {
-            console.error('Помилка перевірки статусу:', error);
-            const statusDot = document.querySelector('.status-dot');
-            const statusText = document.querySelector('.status-text');
-            statusDot.className = 'status-dot offline';
-            statusText.textContent = 'Помилка підключення';
-        }
-    }
-
-    async loadOverviewData() {
-        try {
-            const response = await fetch(`${this.apiBase}/overview`);
-            const data = await response.json();
-            
-            document.getElementById('activeUsers').textContent = data.activeUsers || '0';
-            document.getElementById('totalRooms').textContent = data.totalRooms || '0';
-            document.getElementById('runningServices').textContent = data.runningServices || '0';
-            document.getElementById('diskUsage').textContent = data.diskUsage || '0%';
-        } catch (error) {
-            console.error('Помилка завантаження даних огляду:', error);
-        }
-    }
-
-    async loadSectionData(sectionId) {
-        switch (sectionId) {
-            case 'services':
-                await this.loadServicesData();
-                break;
-            case 'users':
-                await this.loadUsersData();
-                break;
-            case 'bridges':
-                await this.loadBridgesData();
-                break;
-            case 'monitoring':
-                await this.loadMonitoringData();
-                break;
-            case 'backup':
-                await this.loadBackupData();
-                break;
-            case 'settings':
-                await this.loadSettingsData();
-                break;
-            case 'updates':
-                await this.loadUpdatesData();
-                break;
-        }
-    }
-
-    async loadServicesData() {
-        try {
-            const response = await fetch(`${this.apiBase}/services`);
-            const services = await response.json();
-            
-            const servicesGrid = document.getElementById('servicesGrid');
-            servicesGrid.innerHTML = '';
-            
-            services.forEach(service => {
-                const serviceCard = this.createServiceCard(service);
-                servicesGrid.appendChild(serviceCard);
-            });
-        } catch (error) {
-            console.error('Помилка завантаження сервісів:', error);
-        }
-    }
-
-    createServiceCard(service) {
-        const card = document.createElement('div');
-        card.className = 'service-card';
-        card.innerHTML = `
-            <div class="service-header">
-                <span class="service-name">${service.name}</span>
-                <span class="service-status ${service.status}">${service.status}</span>
-            </div>
-            <p>${service.description}</p>
-            <div class="service-actions">
-                <button class="btn btn-primary" onclick="dashboard.controlService('${service.name}', 'start')">
-                    <i class="fas fa-play"></i> Запустити
-                </button>
-                <button class="btn btn-danger" onclick="dashboard.controlService('${service.name}', 'stop')">
-                    <i class="fas fa-stop"></i> Зупинити
-                </button>
-                <button class="btn btn-secondary" onclick="dashboard.controlService('${service.name}', 'restart')">
-                    <i class="fas fa-redo"></i> Перезапустити
-                </button>
-            </div>
-        `;
-        return card;
-    }
-
-    async controlService(serviceName, action) {
-        try {
-            const response = await fetch(`${this.apiBase}/services/${serviceName}/${action}`, {
-                method: 'POST'
-            });
-            
-            if (response.ok) {
-                this.showNotification(`Сервіс ${serviceName} ${action} успішно`, 'success');
-                await this.loadServicesData();
-            } else {
-                this.showNotification(`Помилка ${action} сервісу ${serviceName}`, 'error');
-            }
-        } catch (error) {
-            console.error('Помилка управління сервісом:', error);
-            this.showNotification('Помилка підключення до сервера', 'error');
-        }
-    }
-
-    async loadUsersData() {
-        try {
-            const response = await fetch(`${this.apiBase}/users`);
-            const users = await response.json();
-            
-            const usersTable = document.getElementById('usersTable');
-            usersTable.innerHTML = `
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Користувач</th>
-                            <th>Email</th>
-                            <th>Статус</th>
-                            <th>Дії</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${users.map(user => `
-                            <tr>
-                                <td>${user.username}</td>
-                                <td>${user.email || '-'}</td>
-                                <td><span class="service-status ${user.status}">${user.status}</span></td>
-                                <td>
-                                    <button class="btn btn-danger btn-sm" onclick="dashboard.deleteUser('${user.username}')">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `;
-        } catch (error) {
-            console.error('Помилка завантаження користувачів:', error);
-        }
-    }
-
-    async createUser(userData) {
-        try {
-            const response = await fetch(`${this.apiBase}/users`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(userData)
-            });
-            
-            if (response.ok) {
-                this.showNotification('Користувача створено успішно', 'success');
-                this.closeModal('createUserModal');
-                await this.loadUsersData();
-            } else {
-                this.showNotification('Помилка створення користувача', 'error');
-            }
-        } catch (error) {
-            console.error('Помилка створення користувача:', error);
-            this.showNotification('Помилка підключення до сервера', 'error');
-        }
-    }
-
-    async deleteUser(username) {
-        if (confirm(`Ви впевнені, що хочете видалити користувача ${username}?`)) {
-            try {
-                const response = await fetch(`${this.apiBase}/users/${username}`, {
-                    method: 'DELETE'
-                });
-                
-                if (response.ok) {
-                    this.showNotification('Користувача видалено успішно', 'success');
-                    await this.loadUsersData();
-                } else {
-                    this.showNotification('Помилка видалення користувача', 'error');
-                }
-            } catch (error) {
-                console.error('Помилка видалення користувача:', error);
-                this.showNotification('Помилка підключення до сервера', 'error');
-            }
-        }
-    }
-
-    async loadUpdatesData() {
-        try {
-            const response = await fetch(`${this.apiBase}/updates`);
-            const data = await response.json();
-            
-            document.getElementById('currentVersion').textContent = data.currentVersion || 'Невідомо';
-            document.getElementById('latestVersion').textContent = data.latestVersion || 'Перевірка...';
-            
-            const updateBtn = document.getElementById('updateBtn');
-            if (data.updateAvailable) {
-                updateBtn.disabled = false;
-                updateBtn.textContent = 'Оновити систему';
-            } else {
-                updateBtn.disabled = true;
-                updateBtn.textContent = 'Система актуальна';
-            }
-        } catch (error) {
-            console.error('Помилка завантаження інформації про оновлення:', error);
-        }
-    }
-
-    async checkForUpdates() {
-        try {
-            const response = await fetch(`${this.apiBase}/updates/check`, {
-                method: 'POST'
-            });
-            
-            if (response.ok) {
-                this.showNotification('Перевірка оновлень завершена', 'success');
-                await this.loadUpdatesData();
-            } else {
-                this.showNotification('Помилка перевірки оновлень', 'error');
-            }
-        } catch (error) {
-            console.error('Помилка перевірки оновлень:', error);
-            this.showNotification('Помилка підключення до сервера', 'error');
-        }
-    }
-
-    async performUpdate() {
-        if (confirm('Ви впевнені, що хочете оновити систему? Це може зайняти кілька хвилин.')) {
-            try {
-                const response = await fetch(`${this.apiBase}/updates/perform`, {
-                    method: 'POST'
-                });
-                
-                if (response.ok) {
-                    this.showNotification('Оновлення розпочато', 'success');
-                    this.monitorUpdateProgress();
-                } else {
-                    this.showNotification('Помилка запуску оновлення', 'error');
-                }
-            } catch (error) {
-                console.error('Помилка оновлення:', error);
-                this.showNotification('Помилка підключення до сервера', 'error');
-            }
-        }
-    }
-
-    async monitorUpdateProgress() {
-        const updateLog = document.getElementById('updateLog');
-        updateLog.innerHTML = '<p>Оновлення в процесі...</p>';
-        
-        const checkProgress = async () => {
-            try {
-                const response = await fetch(`${this.apiBase}/updates/progress`);
-                const data = await response.json();
-                
-                updateLog.innerHTML = `
-                    <div class="update-progress">
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${data.progress}%"></div>
-                        </div>
-                        <p>${data.message}</p>
-                        <p>Прогрес: ${data.progress}%</p>
-                    </div>
-                `;
-                
-                if (data.completed) {
-                    this.showNotification('Оновлення завершено успішно', 'success');
-                    await this.loadUpdatesData();
-                    return;
-                }
-                
-                setTimeout(checkProgress, 2000);
-            } catch (error) {
-                console.error('Помилка моніторингу оновлення:', error);
-            }
-        };
-        
-        checkProgress();
-    }
-
-    showModal(modalId) {
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            modal.style.display = 'block';
-        }
-    }
-
-    closeModal(modalId) {
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            modal.style.display = 'none';
-        }
-    }
-
-    showNotification(message, type = 'info') {
-        const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
-        notification.textContent = message;
-        
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-            notification.remove();
-        }, 3000);
-    }
-
-    startAutoRefresh() {
-        this.updateInterval = setInterval(() => {
-            this.checkSystemStatus();
-            if (this.currentSection === 'overview') {
-                this.loadOverviewData();
-            }
-        }, 30000); // Оновлення кожні 30 секунд
-    }
-
-    setupEventListeners() {
-        // Модальні вікна
-        document.querySelectorAll('.close').forEach(closeBtn => {
-            closeBtn.addEventListener('click', () => {
-                const modal = closeBtn.closest('.modal');
-                if (modal) {
-                    modal.style.display = 'none';
-                }
-            });
-        });
-
-        // Форма створення користувача
-        const createUserForm = document.getElementById('createUserForm');
-        if (createUserForm) {
-            createUserForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                const formData = new FormData(createUserForm);
-                const userData = {
-                    username: formData.get('username'),
-                    password: formData.get('password'),
-                    isAdmin: formData.get('isAdmin') === 'on'
-                };
-                this.createUser(userData);
-            });
-        }
-    }
+// Встановлюємо тему з localStorage або за замовчуванням світлу
+function setTheme(theme) {
+  if (theme === 'dark') {
+    body.classList.add('dark');
+    themeToggle.textContent = '☀️';
+  } else {
+    body.classList.remove('dark');
+    themeToggle.textContent = '🌙';
+  }
+  localStorage.setItem('theme', theme);
 }
 
-// Глобальні функції для виклику з HTML
-function showCreateUserModal() {
-    dashboard.showModal('createUserModal');
+const savedTheme = localStorage.getItem('theme') || 'light';
+setTheme(savedTheme);
+
+themeToggle.addEventListener('click', () => {
+  const newTheme = body.classList.contains('dark') ? 'light' : 'dark';
+  setTheme(newTheme);
+});
+
+// --- Функція для показу/приховування помилки API ---
+function showApiError(show) {
+  document.getElementById('api-error').classList.toggle('hidden', !show);
 }
 
-function createBackup() {
-    dashboard.createBackup();
+// --- Завантаження статусу системи ---
+async function loadStatus() {
+  try {
+    const res = await fetch('/api/status');
+    if (!res.ok) throw new Error('API недоступний');
+    const data = await res.json();
+    document.getElementById('status-content').textContent = `Стан: ${data.status === 'online' ? '🟢 Онлайн' : '🔴 Офлайн'}`;
+    showApiError(false);
+  } catch (e) {
+    document.getElementById('status-content').textContent = 'Немає даних';
+    showApiError(true);
+  }
 }
 
-function listBackups() {
-    dashboard.listBackups();
+// --- Завантаження сервісів ---
+async function loadServices() {
+  try {
+    const res = await fetch('/api/services');
+    if (!res.ok) throw new Error('API недоступний');
+    const services = await res.json();
+    const html = services.map(s => `
+      <div class="service-row">
+        <b>${s.name}</b>: ${s.status === 'running' ? '🟢' : '🔴'}
+        <button onclick="serviceAction('${s.name}','start')">Старт</button>
+        <button onclick="serviceAction('${s.name}','stop')">Стоп</button>
+        <button onclick="serviceAction('${s.name}','restart')">Рестарт</button>
+      </div>
+    `).join('');
+    document.getElementById('services-list').innerHTML = html;
+    showApiError(false);
+  } catch (e) {
+    document.getElementById('services-list').textContent = 'Немає даних';
+    showApiError(true);
+  }
 }
 
-function checkForUpdates() {
-    dashboard.checkForUpdates();
+// --- Дії над сервісами ---
+window.serviceAction = async (name, action) => {
+  try {
+    const res = await fetch(`/api/services/${name}/${action}`, {method: 'POST'});
+    if (!res.ok) throw new Error('API недоступний');
+    await loadServices();
+  } catch (e) {
+    alert('Помилка виконання дії!');
+  }
+};
+
+// --- Завантаження користувачів ---
+async function loadUsers() {
+  try {
+    const res = await fetch('/api/users');
+    if (!res.ok) throw new Error('API недоступний');
+    const users = await res.json();
+    const html = users.map(u => `
+      <div class="user-row">
+        <b>${u.username}</b> (${u.status})
+        <button onclick="deleteUser('${u.username}')">Видалити</button>
+      </div>
+    `).join('');
+    document.getElementById('users-list').innerHTML = html;
+    showApiError(false);
+  } catch (e) {
+    document.getElementById('users-list').textContent = 'Немає даних';
+    showApiError(true);
+  }
 }
 
-function performUpdate() {
-    dashboard.performUpdate();
+// --- Створення користувача ---
+document.getElementById('user-create-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = document.getElementById('new-username').value.trim();
+  const password = document.getElementById('new-password').value;
+  if (!username || !password) return;
+  try {
+    const res = await fetch('/api/users', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username, password})
+    });
+    if (!res.ok) throw new Error('API недоступний');
+    document.getElementById('new-username').value = '';
+    document.getElementById('new-password').value = '';
+    await loadUsers();
+  } catch (e) {
+    alert('Помилка створення користувача!');
+  }
+});
+
+// --- Видалення користувача ---
+window.deleteUser = async (username) => {
+  if (!confirm(`Видалити користувача ${username}?`)) return;
+  try {
+    const res = await fetch(`/api/users/${username}`, {method: 'DELETE'});
+    if (!res.ok) throw new Error('API недоступний');
+    await loadUsers();
+  } catch (e) {
+    alert('Помилка видалення користувача!');
+  }
+};
+
+// --- Завантаження резервних копій ---
+async function loadBackups() {
+  try {
+    const res = await fetch('/api/backup');
+    if (!res.ok) throw new Error('API недоступний');
+    const backups = await res.json();
+    const html = backups.map(b => `
+      <div class="backup-row">
+        <b>${b.name}</b> (${(b.size/1024/1024).toFixed(1)} MB, ${b.date})
+      </div>
+    `).join('');
+    document.getElementById('backup-list').innerHTML = html;
+    showApiError(false);
+  } catch (e) {
+    document.getElementById('backup-list').textContent = 'Немає даних';
+    showApiError(true);
+  }
 }
 
-function saveSettings() {
-    dashboard.saveSettings();
+// --- Створення резервної копії ---
+document.getElementById('backup-create').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/api/backup', {method: 'POST'});
+    if (!res.ok) throw new Error('API недоступний');
+    await loadBackups();
+  } catch (e) {
+    alert('Помилка створення резервної копії!');
+  }
+});
+
+// --- Ініціалізація ---
+function init() {
+  loadStatus();
+  loadServices();
+  loadUsers();
+  loadBackups();
 }
 
-// Ініціалізація dashboard
-const dashboard = new MatrixDashboard(); 
+window.addEventListener('DOMContentLoaded', init); 
