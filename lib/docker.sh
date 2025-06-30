@@ -33,11 +33,15 @@ install_docker_dependencies() {
         return 1
     fi
     
-    # Встановлюємо веб сервер та залежності
-    log_info "Встановлення веб серверів та залежностей..."
-    if ! log_command "apt install -y nginx supervisor"; then
-        log_error "Помилка встановлення веб серверів"
-        return 1
+    # Встановлюємо веб сервери тільки якщо не використовується Cloudflare Tunnel
+    if [[ "${USE_CLOUDFLARE_TUNNEL}" != "true" ]]; then
+        log_info "Встановлення веб серверів..."
+        if ! log_command "apt install -y nginx supervisor"; then
+            log_error "Помилка встановлення веб серверів"
+            return 1
+        fi
+    else
+        log_info "Пропуск встановлення nginx (активний Cloudflare Tunnel)"
     fi
     
     # Встановлюємо утиліти для системного адміністрування
@@ -102,12 +106,28 @@ install_docker_dependencies() {
         log_success "Docker вже встановлено"
     fi
     
-    # Встановлюємо Python пакети для веб API
-    log_info "Встановлення Python пакетів для веб API..."
-    if ! log_command "pip3 install --no-cache-dir flask flask-cors pyyaml requests psutil docker"; then
-        log_error "Помилка встановлення Python пакетів"
+    # Встановлюємо Python пакети для веб API через virtualenv
+    log_info "Встановлення Python пакетів для веб API у virtualenv..."
+    VENV_DIR="/opt/matrix-venv"
+    if ! command -v python3 -m venv &> /dev/null; then
+        log_error "python3-venv не встановлено. Встановіть пакет python3-venv."
         return 1
     fi
+    mkdir -p "$VENV_DIR"
+    python3 -m venv "$VENV_DIR"
+    source "$VENV_DIR/bin/activate"
+    if ! pip install --upgrade pip; then
+        log_error "Не вдалося оновити pip у virtualenv"
+        deactivate
+        return 1
+    fi
+    if ! pip install flask flask-cors pyyaml requests psutil docker; then
+        log_error "Помилка встановлення Python пакетів у virtualenv"
+        deactivate
+        return 1
+    fi
+    deactivate
+    log_success "Python пакети встановлено у virtualenv: $VENV_DIR"
     
     # Перевіряємо Docker Compose
     if docker compose version >> "${LOG_FILE}" 2>&1; then
@@ -115,6 +135,13 @@ install_docker_dependencies() {
     else
         log_error "Docker Compose недоступний"
         exit 1
+    fi
+    
+    # Встановлюємо Docker Compose plugin
+    log_info "Встановлення docker-compose-plugin..."
+    if ! log_command "apt install -y docker-compose-plugin"; then
+        log_error "Помилка встановлення docker-compose-plugin"
+        return 1
     fi
     
     log_success "Всі залежності встановлено успішно"
@@ -155,74 +182,101 @@ setup_directory_structure() {
 generate_docker_compose() {
     log_step "Створення Docker Compose конфігурації"
     
+    # --- Створюємо базову структуру docker-compose.yml ---
     local compose_file="${BASE_DIR}/docker-compose.yml"
-    
-    # Копіюємо основний docker-compose.yml
-    if [[ -f "${SCRIPT_DIR}/docker-compose.yml" ]]; then
-        cp "${SCRIPT_DIR}/docker-compose.yml" "${compose_file}"
-        log_success "Docker Compose конфігурацію скопійовано"
-    else
-        log_error "Файл docker-compose.yml не знайдено в ${SCRIPT_DIR}"
-        return 1
-    fi
-    
-    # Створюємо .env файл з змінними середовища
-    cat > "${BASE_DIR}/.env" << EOF
-# Matrix Synapse Configuration
-DOMAIN=${DOMAIN}
-POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-GRAFANA_PASSWORD=${GRAFANA_PASSWORD:-admin123}
+    cat > "${compose_file}" <<EOF
+version: '3.8'
 
-# Cloudflare Tunnel
-CLOUDFLARE_TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: matrix-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: matrix
+      POSTGRES_USER: matrix
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - matrix-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U matrix -d matrix"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-# Bridge Configuration
-SIGNAL_BRIDGE_ENABLED=${INSTALL_SIGNAL_BRIDGE:-false}
-WHATSAPP_BRIDGE_ENABLED=${INSTALL_WHATSAPP_BRIDGE:-false}
-DISCORD_BRIDGE_ENABLED=${INSTALL_DISCORD_BRIDGE:-false}
+  redis:
+    image: redis:7-alpine
+    container_name: matrix-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - matrix-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-# Monitoring
-MONITORING_ENABLED=${SETUP_MONITORING:-false}
+  synapse:
+    image: matrixdotorg/synapse:latest
+    container_name: matrix-synapse
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - synapse_data:/data
+      # Мапимо лише файл конфігурації, а не всю директорію, щоб уникнути read-only
+      - ./synapse/config/homeserver.yaml:/data/homeserver.yaml:ro
+    environment:
+      - SYNAPSE_SERVER_NAME=${DOMAIN}
+      - SYNAPSE_REPORT_STATS=no
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    networks:
+      - matrix-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8008/_matrix/client/versions || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: matrix-cloudflared
+    restart: unless-stopped
+    command: tunnel run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - matrix-network
+    profiles:
+      - cloudflare
 EOF
-    
-    # Створюємо директорії для конфігурацій
-    mkdir -p "${BASE_DIR}/synapse/config"
-    mkdir -p "${BASE_DIR}/nginx/conf.d"
-    mkdir -p "${BASE_DIR}/nginx/ssl"
-    mkdir -p "${BASE_DIR}/postgres/init"
-    mkdir -p "${BASE_DIR}/monitoring/prometheus"
-    mkdir -p "${BASE_DIR}/monitoring/grafana"
-    mkdir -p "${BASE_DIR}/monitoring/loki"
-    mkdir -p "${BASE_DIR}/monitoring/promtail"
-    
-    # Генеруємо конфігурацію Synapse
-    generate_synapse_docker_config
-    
-    # Генеруємо конфігурацію Nginx
-    generate_nginx_config
-    
-    # Генеруємо конфігурацію моніторингу
-    if [[ "${SETUP_MONITORING}" == "true" ]]; then
-        generate_monitoring_config
+    # ... далі додавання інших сервісів умовно ...
+    if [[ "${USE_CLOUDFLARE_TUNNEL}" != "true" ]]; then
+        generate_nginx_config
+        cat "${BASE_DIR}/nginx/docker-compose.nginx.yml" >> "${compose_file}"
+    else
+        log_info "Пропуск додавання nginx у docker-compose.yml (активний Cloudflare Tunnel)"
     fi
-    
-    # Генеруємо конфігурацію мостів
-    if [[ "${INSTALL_BRIDGES}" == "true" ]]; then
-        generate_bridge_docker_configs
-    fi
-    
-    # Встановлюємо правильні права
-    chmod 644 "${compose_file}"
-    chmod 600 "${BASE_DIR}/.env"
-    
-    if [[ -n "${SUDO_USER:-}" ]]; then
-        local actual_user_id=$(id -u "${SUDO_USER}")
-        local actual_group_id=$(id -g "${SUDO_USER}")
-        chown "${actual_user_id}:${actual_group_id}" "${compose_file}"
-        chown "${actual_user_id}:${actual_group_id}" "${BASE_DIR}/.env"
-        chown -R "${actual_user_id}:${actual_group_id}" "${BASE_DIR}"
-    fi
-    
+    # ... інші сервіси ...
+    cat >> "${compose_file}" <<EOF
+
+networks:
+  matrix-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  synapse_data:
+EOF
     log_success "Docker Compose конфігурацію створено"
 }
 
@@ -231,6 +285,10 @@ generate_synapse_docker_config() {
     log_info "Генерація конфігурації Synapse для Docker"
     
     local synapse_config="${BASE_DIR}/synapse/config/homeserver.yaml"
+    # --- Генеруємо секрет для реєстрації, якщо не визначено ---
+    if [[ -z "${REGISTRATION_SHARED_SECRET:-}" ]]; then
+        REGISTRATION_SHARED_SECRET="$(openssl rand -base64 32)"
+    fi
     
     cat > "${synapse_config}" << EOF
 # Matrix Synapse Configuration for Docker
@@ -494,178 +552,51 @@ EOF
 
 # Генерація конфігурації Nginx
 generate_nginx_config() {
-    log_info "Генерація конфігурації Nginx"
+    if [[ "${USE_CLOUDFLARE_TUNNEL}" == "true" ]]; then
+        log_info "Пропуск генерації Nginx (активний Cloudflare Tunnel)"
+        return 0
+    fi
+    log_step "Генерація конфігурації Nginx"
     
-    local nginx_config="${BASE_DIR}/nginx/conf.d/default.conf"
-    
-    cat > "${nginx_config}" << EOF
-# Nginx Configuration for Matrix Synapse
-# Generated by Matrix Synapse Installer v4.0
+    local nginx_conf_dir="${BASE_DIR}/nginx/conf.d"
+    local nginx_ssl_dir="${BASE_DIR}/nginx/ssl"
+    mkdir -p "$nginx_conf_dir" "$nginx_ssl_dir"
 
-upstream synapse {
-    server synapse:8008;
-}
+    # --- Вибір портів залежно від Cloudflare Tunnel ---
+    if [[ "${USE_CLOUDFLARE_TUNNEL}" == "true" ]]; then
+        NGINX_PORT_HTTP=8080
+        NGINX_PORT_HTTPS=8443
+    else
+        NGINX_PORT_HTTP=80
+        NGINX_PORT_HTTPS=443
+    fi
 
-upstream element {
-    server element:80;
-}
-
-server {
-    listen 80;
-    server_name ${DOMAIN};
-    
-    # Health check endpoint
-    location /health {
-        access_log off;
-        return 200 "healthy\n";
-        add_header Content-Type text/plain;
-    }
-    
-    # Matrix Client-Server API
-    location /_matrix/client/ {
-        proxy_pass http://synapse;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 60s;
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-    }
-    
-    # Matrix Server-Server API
-    location /_matrix/federation/ {
-        proxy_pass http://synapse;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 60s;
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-    }
-    
-    # Matrix Media API
-    location /_matrix/media/ {
-        proxy_pass http://synapse;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 60s;
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-    }
-    
-    # Element Web Client
-    location / {
-        root /usr/share/nginx/html;
-        index index.html;
-        try_files \$uri \$uri/ /index.html;
-        
-        # Cache static assets
-        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
-            expires 1y;
-            add_header Cache-Control "public, immutable";
-        }
-    }
-    
-    # Dashboard
-    location /dashboard/ {
-        alias /usr/share/nginx/dashboard/;
-        index index.html;
-        try_files \$uri \$uri/ /dashboard/index.html;
-    }
-    
-    # Security headers
-    add_header X-Frame-Options DENY;
-    add_header X-Content-Type-Options nosniff;
-    add_header X-XSS-Protection "1; mode=block";
-    add_header Referrer-Policy "strict-origin-when-cross-origin";
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none';";
-}
-
-# HTTPS configuration (if SSL is enabled)
-server {
-    listen 443 ssl http2;
-    server_name ${DOMAIN};
-    
-    ssl_certificate /etc/nginx/ssl/cert.pem;
-    ssl_certificate_key /etc/nginx/ssl/key.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
-    ssl_prefer_server_ciphers off;
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
-    
-    # Same location blocks as HTTP
-    location /health {
-        access_log off;
-        return 200 "healthy\n";
-        add_header Content-Type text/plain;
-    }
-    
-    location /_matrix/client/ {
-        proxy_pass http://synapse;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 60s;
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-    }
-    
-    location /_matrix/federation/ {
-        proxy_pass http://synapse;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 60s;
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-    }
-    
-    location /_matrix/media/ {
-        proxy_pass http://synapse;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 60s;
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-    }
-    
-    location / {
-        root /usr/share/nginx/html;
-        index index.html;
-        try_files \$uri \$uri/ /index.html;
-        
-        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
-            expires 1y;
-            add_header Cache-Control "public, immutable";
-        }
-    }
-    
-    location /dashboard/ {
-        alias /usr/share/nginx/dashboard/;
-        index index.html;
-        try_files \$uri \$uri/ /dashboard/index.html;
-    }
-    
-    # Security headers
-    add_header X-Frame-Options DENY;
-    add_header X-Content-Type-Options nosniff;
-    add_header X-XSS-Protection "1; mode=block";
-    add_header Referrer-Policy "strict-origin-when-cross-origin";
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none';";
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-}
+    # --- Генерація docker-compose фрагменту для nginx ---
+    cat > "${BASE_DIR}/nginx/docker-compose.nginx.yml" <<EOF
+  nginx:
+    image: nginx:alpine
+    container_name: matrix-nginx
+    restart: unless-stopped
+    depends_on:
+      - synapse
+    ports:
+      - "${NGINX_PORT_HTTP}:80"
+      - "${NGINX_PORT_HTTPS}:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./element:/usr/share/nginx/html:ro
+      - ./web/dashboard:/usr/share/nginx/dashboard:ro
+    networks:
+      - matrix-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 EOF
-    
-    log_success "Конфігурацію Nginx створено"
+
+    log_success "Конфігурацію Nginx згенеровано (порт HTTP: ${NGINX_PORT_HTTP})"
 }
 
 # Генерація конфігурації моніторингу
@@ -1015,17 +946,22 @@ verify_dependencies() {
     
     local missing_deps=()
     local required_commands=(
-        "curl" "wget" "git" "python3" "pip3" "docker" "docker-compose"
-        "nginx" "supervisord" "cron" "rsync" "unzip" "jq" "ufw"
+        "curl" "wget" "git" "python3" "pip3" "docker" "nginx" "supervisord" "cron" "rsync" "unzip" "jq" "ufw"
         "fail2ban-client" "openssl" "certbot" "ss" "ping" "free" "df"
     )
-    
+    # Перевіряємо всі стандартні залежності
     for cmd in "${required_commands[@]}"; do
         if ! command -v "$cmd" &> /dev/null; then
             missing_deps+=("$cmd")
         fi
     done
-    
+    # Окремо перевіряємо docker-compose: приймаємо або стару, або нову команду
+    # Якщо немає docker-compose, але є 'docker compose', це теж ок
+    if ! command -v docker-compose &> /dev/null; then
+        if ! docker compose version &> /dev/null; then
+            missing_deps+=("docker-compose")
+        fi
+    fi
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
         log_error "Відсутні залежності: ${missing_deps[*]}"
         return 1

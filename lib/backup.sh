@@ -5,7 +5,7 @@
 
 # --- Константи ---
 readonly BACKUP_BASE_DIR="/DATA/matrix-backups"
-readonly BACKUP_RETENTION_DAYS=30
+# readonly BACKUP_RETENTION_DAYS=30
 readonly BACKUP_LOG="$BACKUP_BASE_DIR/backup.log"
 
 # --- Функції ---

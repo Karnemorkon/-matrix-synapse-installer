@@ -4,7 +4,9 @@
 # ===================================================================================
 
 # --- Константи ---
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z "${SCRIPT_DIR:-}" ]]; then
+  readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
 readonly PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # --- Спільні Функції ---

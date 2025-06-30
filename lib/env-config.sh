@@ -4,6 +4,9 @@
 # ===================================================================================
 
 # --- Константи ---
+if [[ -z "${BASE_DIR:-}" ]]; then
+  BASE_DIR="/DATA/matrix"
+fi
 readonly ENV_FILE="${BASE_DIR}/.env"
 readonly ENV_TEMPLATE_FILE="${SCRIPT_DIR}/templates/.env.template"
 

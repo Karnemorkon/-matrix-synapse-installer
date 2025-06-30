@@ -32,14 +32,14 @@ setup_directory_structure() {
 generate_synapse_config() {
     log_step "Генерація конфігурації Synapse"
     
-    local config_dir="${BASE_DIR}/config/synapse"
-    local data_dir="${BASE_DIR}/data/synapse"
+    local config_dir="${BASE_DIR}/synapse/config"
+    local data_dir="${BASE_DIR}/synapse/data"
     
     # Генеруємо початкову конфігурацію якщо вона не існує
-    if [[ ! -f "${data_dir}/homeserver.yaml" ]]; then
+    if [[ ! -f "${config_dir}/homeserver.yaml" ]]; then
         log_info "Створення початкової конфігурації..."
         docker run --rm \
-            -v "${data_dir}:/data" \
+            -v "${config_dir}:/data" \
             -e SYNAPSE_SERVER_NAME="${DOMAIN}" \
             -e SYNAPSE_REPORT_STATS=no \
             matrixdotorg/synapse:latest generate
