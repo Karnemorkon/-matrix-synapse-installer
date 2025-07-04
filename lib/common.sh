@@ -170,8 +170,95 @@ check_network_connectivity() {
     return 1
 }
 
+# --- Rollback інсталяції (ще ширше) ---
+rollback_install() {
+    log_warning "Виконується широкий rollback інсталяції..."
+    # Відновлення .env
+    if [[ -f "${BASE_DIR}/.env.bak" ]]; then
+        mv -f "${BASE_DIR}/.env.bak" "${BASE_DIR}/.env"
+        log_info "Відновлено .env з бекапу"
+    fi
+    # Відновлення docker-compose.yml
+    if [[ -f "${BASE_DIR}/docker-compose.yml.bak" ]]; then
+        mv -f "${BASE_DIR}/docker-compose.yml.bak" "${BASE_DIR}/docker-compose.yml"
+        log_info "Відновлено docker-compose.yml з бекапу"
+    fi
+    # Відновлення Synapse config
+    if [[ -f "${BASE_DIR}/synapse/config/homeserver.yaml.bak" ]]; then
+        mv -f "${BASE_DIR}/synapse/config/homeserver.yaml.bak" "${BASE_DIR}/synapse/config/homeserver.yaml"
+        log_info "Відновлено Synapse config з бекапу"
+    fi
+    # Відновлення nginx config
+    if [[ -f "${BASE_DIR}/nginx/conf.d/matrix.conf.bak" ]]; then
+        mv -f "${BASE_DIR}/nginx/conf.d/matrix.conf.bak" "${BASE_DIR}/nginx/conf.d/matrix.conf"
+        log_info "Відновлено nginx config з бекапу"
+    fi
+    # Відновлення bridges config
+    for bridge in signal whatsapp discord; do
+        local bridge_conf="${BASE_DIR}/synapse/config/${bridge}-bridge.yaml"
+        if [[ -f "$bridge_conf.bak" ]]; then
+            mv -f "$bridge_conf.bak" "$bridge_conf"
+            log_info "Відновлено $bridge конфіг з бекапу"
+        fi
+    done
+    # Відновлення інших важливих конфігів (додавай за потреби)
+    # ...
+    # Видалення тимчасових директорій
+    for d in "${BASE_DIR}/backups/install_tmp" "${BASE_DIR}/tmp"; do
+        if [[ -d "$d" ]]; then
+            rm -rf "$d"
+            log_info "Видалено тимчасову директорію $d"
+        fi
+    done
+    # Зупинка і видалення docker-контейнерів зі списку
+    if [[ -f "${BASE_DIR}/install_containers.list" ]]; then
+        while read -r cname; do
+            if [[ -n "$cname" ]]; then
+                if docker ps -a --format '{{.Names}}' | grep -q "^$cname$"; then
+                    docker stop "$cname" || true
+                    docker rm "$cname" || true
+                    log_info "Зупинено і видалено контейнер $cname"
+                fi
+            fi
+        done < "${BASE_DIR}/install_containers.list"
+        rm -f "${BASE_DIR}/install_containers.list"
+    fi
+    # Зупинка docker-compose
+    if command -v docker-compose &> /dev/null; then
+        docker-compose down
+    elif docker compose version &> /dev/null; then
+        docker compose down
+    fi
+    log_success "Широкий rollback завершено"
+}
+
+# --- Перевірка оновлення системних пакетів ---
+check_system_updates() {
+    log_step "Перевірка оновлення системних пакетів"
+    if ! command -v apt &> /dev/null; then
+        log_warning "apt не знайдено, пропускаю перевірку оновлень"
+        return 0
+    fi
+    local updates=$(apt list --upgradable 2>/dev/null | grep -v "Listing..." | wc -l)
+    if [[ $updates -gt 0 ]]; then
+        log_warning "Є $updates оновлень системних пакетів. Рекомендується виконати: apt update && apt upgrade"
+    else
+        log_success "Системні пакети актуальні"
+    fi
+}
+
+# --- Cleanup після невдалої інсталяції ---
+cleanup_install() {
+    log_warning "Виконується cleanup після невдалої інсталяції..."
+    # Видалити тимчасові файли, логи, залишки
+    find "${BASE_DIR}" -name '*.tmp' -delete
+    find "${BASE_DIR}" -name '*.log' -size +100M -delete
+    log_success "Cleanup завершено"
+}
+
 # Експортуємо функції
 export -f generate_secure_token validate_ip validate_port is_port_available
 export -f create_secure_directory secure_copy is_container_running
 export -f get_container_status safe_execute check_file_readable
-export -f backup_file validate_yaml_file get_system_info check_network_connectivity 
+export -f backup_file validate_yaml_file get_system_info check_network_connectivity
+export -f rollback_install check_system_updates cleanup_install 

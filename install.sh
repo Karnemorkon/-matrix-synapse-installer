@@ -37,6 +37,17 @@ source "${SCRIPT_DIR}/lib/common.sh"
 source "${SCRIPT_DIR}/lib/error-handler.sh"
 source "${SCRIPT_DIR}/lib/env-config.sh"
 
+# --- Trap для rollback/cleanup ---
+trap 'rollback_install; cleanup_install; exit 1' ERR
+
+# --- Перевірки системних вимог ---
+check_swap
+check_docker_version
+check_docker_compose_version
+
+# --- Перевірка оновлення системних пакетів ---
+check_system_updates
+
 # --- Головна Функція ---
 main() {
     # Ініціалізація логування
@@ -269,6 +280,11 @@ execute_installation() {
     log_step "Очищення системи"
     cleanup_package_cache
     
+    # --- Видаляємо всі старі контейнери з іменами, що містять matrix-redis, matrix-postgres, matrix-synapse, matrix-nginx ---
+    log_info "Видалення всіх старих контейнерів Matrix (redis, postgres, synapse, nginx) перед запуском..."
+    docker ps -a --format '{{.Names}}' | grep -E 'matrix.*(redis|postgres|synapse|nginx)' | xargs -r docker rm -f
+    # --- Далі стандартний запуск docker-compose ---
+    
     log_success "Встановлення завершено успішно!"
 }
 
@@ -318,6 +334,25 @@ fi)
 ✅ Система готова до використання!
 EOF
 }
+
+# --- Бекапи важливих файлів перед зміною ---
+if [[ -f "${BASE_DIR}/.env" && ! -f "${BASE_DIR}/.env.bak" ]]; then
+    cp "${BASE_DIR}/.env" "${BASE_DIR}/.env.bak"
+fi
+if [[ -f "${BASE_DIR}/docker-compose.yml" && ! -f "${BASE_DIR}/docker-compose.yml.bak" ]]; then
+    cp "${BASE_DIR}/docker-compose.yml" "${BASE_DIR}/docker-compose.yml.bak"
+fi
+if [[ -f "${BASE_DIR}/synapse/config/homeserver.yaml" && ! -f "${BASE_DIR}/synapse/config/homeserver.yaml.bak" ]]; then
+    cp "${BASE_DIR}/synapse/config/homeserver.yaml" "${BASE_DIR}/synapse/config/homeserver.yaml.bak"
+fi
+if [[ -f "${BASE_DIR}/nginx/conf.d/matrix.conf" && ! -f "${BASE_DIR}/nginx/conf.d/matrix.conf.bak" ]]; then
+    cp "${BASE_DIR}/nginx/conf.d/matrix.conf" "${BASE_DIR}/nginx/conf.d/matrix.conf.bak"
+fi
+
+# --- Збереження імен docker-контейнерів при створенні ---
+# Приклад: після створення контейнера
+# docker run --name mycontainer ...
+# echo "mycontainer" >> "${BASE_DIR}/install_containers.list"
 
 # Перевіряємо чи скрипт запущено безпосередньо
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
