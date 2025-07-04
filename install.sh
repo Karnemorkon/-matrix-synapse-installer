@@ -41,6 +41,7 @@ source "${SCRIPT_DIR}/lib/env-config.sh"
 trap 'rollback_install; cleanup_install; exit 1' ERR
 
 # --- Перевірки системних вимог ---
+# Перевіряє swap, docker, docker-compose, оновлення системи
 check_swap
 check_docker_version
 check_docker_compose_version
@@ -49,6 +50,7 @@ check_docker_compose_version
 check_system_updates
 
 # --- Головна Функція ---
+# Основний workflow інсталяції
 main() {
     # Ініціалізація логування
     init_logger
@@ -336,6 +338,7 @@ EOF
 }
 
 # --- Бекапи важливих файлів перед зміною ---
+# Створює .bak-файли для ключових конфігів, якщо ще не існують
 if [[ -f "${BASE_DIR}/.env" && ! -f "${BASE_DIR}/.env.bak" ]]; then
     cp "${BASE_DIR}/.env" "${BASE_DIR}/.env.bak"
 fi
@@ -350,6 +353,7 @@ if [[ -f "${BASE_DIR}/nginx/conf.d/matrix.conf" && ! -f "${BASE_DIR}/nginx/conf.
 fi
 
 # --- Збереження імен docker-контейнерів при створенні ---
+# Додає імена нових контейнерів у install_containers.list для rollback
 # Приклад: після створення контейнера
 # docker run --name mycontainer ...
 # echo "mycontainer" >> "${BASE_DIR}/install_containers.list"

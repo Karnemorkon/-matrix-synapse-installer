@@ -4,6 +4,8 @@
 # ===================================================================================
 
 # --- Функції ---
+# --- Перевірка root-привілеїв ---
+# Завершує роботу, якщо скрипт не під root
 check_root_privileges() {
     if [[ $EUID -ne 0 ]]; then
         log_error "Цей скрипт потрібно запускати з правами root або через sudo"
@@ -85,6 +87,8 @@ validate_system_requirements() {
     log_success "Перевірка системних вимог завершена"
 }
 
+# --- Валідація домену ---
+# Перевіряє, чи домен відповідає шаблону
 validate_domain() {
     local domain="$1"
     if [[ ! "$domain" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
@@ -93,6 +97,8 @@ validate_domain() {
     return 0
 }
 
+# --- Валідація email ---
+# Перевіряє, чи email відповідає шаблону
 validate_email() {
     local email="$1"
     if [[ ! "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
@@ -101,5 +107,63 @@ validate_email() {
     return 0
 }
 
+# --- Перевірка swap ---
+# Перевіряє наявність і розмір swap
+check_swap() {
+    local min_swap_mb=1024
+    local swap_total_mb=$(free -m | awk '/Swap:/ {print $2}')
+    if [[ -z "$swap_total_mb" || $swap_total_mb -eq 0 ]]; then
+        log_warning "Swap не налаштовано. Рекомендується мінімум ${min_swap_mb}MB swap для стабільної роботи."
+    elif [[ $swap_total_mb -lt $min_swap_mb ]]; then
+        log_warning "Swap занадто малий (${swap_total_mb}MB). Рекомендується мінімум ${min_swap_mb}MB."
+    else
+        log_success "Swap налаштовано (${swap_total_mb}MB)"
+    fi
+}
+
+# --- Перевірка версії Docker ---
+# Перевіряє, чи встановлено docker і його версію
+check_docker_version() {
+    local min_version="20.10"
+    if ! command -v docker &> /dev/null; then
+        log_error "Docker не встановлено!"
+        exit 1
+    fi
+    local version=$(docker --version | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+    if [[ -z "$version" ]]; then
+        log_warning "Не вдалося визначити версію Docker."
+        return 1
+    fi
+    if [[ $(printf '%s\n' "$min_version" "$version" | sort -V | head -n1) != "$min_version" ]]; then
+        log_warning "Рекомендується Docker >= ${min_version} (зараз: $version)"
+    else
+        log_success "Docker версія підтримується ($version)"
+    fi
+}
+
+# --- Перевірка версії Docker Compose ---
+# Перевіряє, чи встановлено docker-compose і його версію
+check_docker_compose_version() {
+    local min_version="1.29"
+    local version=""
+    if command -v docker-compose &> /dev/null; then
+        version=$(docker-compose --version | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+    elif docker compose version &> /dev/null; then
+        version=$(docker compose version --short)
+    else
+        log_error "Docker Compose не встановлено!"
+        exit 1
+    fi
+    if [[ -z "$version" ]]; then
+        log_warning "Не вдалося визначити версію Docker Compose."
+        return 1
+    fi
+    if [[ $(printf '%s\n' "$min_version" "$version" | sort -V | head -n1) != "$min_version" ]]; then
+        log_warning "Рекомендується Docker Compose >= ${min_version} (зараз: $version)"
+    else
+        log_success "Docker Compose версія підтримується ($version)"
+    fi
+}
+
 # Експортуємо функції
-export -f check_root_privileges validate_system_requirements validate_domain validate_email
+export -f check_root_privileges validate_system_requirements validate_domain validate_email check_swap check_docker_version check_docker_compose_version

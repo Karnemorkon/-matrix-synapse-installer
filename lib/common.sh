@@ -11,13 +11,15 @@ readonly PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # --- Спільні Функції ---
 
-# Генерація безпечних токенів
+# --- Генерація безпечних токенів ---
+# Повертає випадковий токен заданої довжини
 generate_secure_token() {
     local length="${1:-32}"
     openssl rand -base64 "$length" | tr -d "=+/" | cut -c1-"$length"
 }
 
-# Валідація IP адреси
+# --- Валідація IP адреси ---
+# Перевіряє, чи рядок є коректною IPv4-адресою
 validate_ip() {
     local ip="$1"
     if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
@@ -32,7 +34,8 @@ validate_ip() {
     return 1
 }
 
-# Валідація порту
+# --- Валідація порту ---
+# Перевіряє, чи порт у допустимому діапазоні
 validate_port() {
     local port="$1"
     if [[ $port =~ ^[0-9]+$ ]] && [[ $port -ge 1 && $port -le 65535 ]]; then
@@ -41,13 +44,15 @@ validate_port() {
     return 1
 }
 
-# Перевірка чи порт вільний
+# --- Перевірка чи порт вільний ---
+# Повертає 0, якщо порт не зайнятий
 is_port_available() {
     local port="$1"
     ! netstat -tuln | grep -q ":$port "
 }
 
-# Створення директорії з правильними правами
+# --- Створення директорії з правильними правами ---
+# Створює директорію з вказаними правами та власником
 create_secure_directory() {
     local dir="$1"
     local owner="${2:-991:991}"
@@ -58,7 +63,8 @@ create_secure_directory() {
     chmod "$permissions" "$dir"
 }
 
-# Безпечне копіювання файлів
+# --- Безпечне копіювання файлів ---
+# Копіює файл з встановленням прав та власника
 secure_copy() {
     local source="$1"
     local destination="$2"
@@ -74,19 +80,22 @@ secure_copy() {
     return 1
 }
 
-# Перевірка чи Docker контейнер запущений
+# --- Перевірка чи Docker контейнер запущений ---
+# Повертає 0, якщо контейнер запущений
 is_container_running() {
     local container_name="$1"
     docker ps --format "table {{.Names}}" | grep -q "^${container_name}$"
 }
 
-# Отримання статусу контейнера
+# --- Отримання статусу контейнера ---
+# Повертає статус контейнера за іменем
 get_container_status() {
     local container_name="$1"
     docker ps --format "table {{.Names}}\t{{.Status}}" | grep "^${container_name}" | awk '{print $2}'
 }
 
-# Безпечне виконання команди з логуванням
+# --- Безпечне виконання команди з логуванням ---
+# Виконує команду, логуючи результат
 safe_execute() {
     local command="$1"
     local description="${2:-Виконання команди}"
@@ -101,7 +110,8 @@ safe_execute() {
     fi
 }
 
-# Перевірка чи файл існує та читабельний
+# --- Перевірка чи файл існує та читабельний ---
+# Повертає 0, якщо файл існує і читабельний
 check_file_readable() {
     local file="$1"
     if [[ -f "$file" && -r "$file" ]]; then
@@ -110,7 +120,8 @@ check_file_readable() {
     return 1
 }
 
-# Створення резервної копії файлу
+# --- Створення резервної копії файлу ---
+# Копіює файл у директорію бекапів з міткою часу
 backup_file() {
     local file="$1"
     local backup_dir="${2:-$(dirname "$file")/backups}"
@@ -125,7 +136,8 @@ backup_file() {
     return 1
 }
 
-# Валідація конфігураційного файлу YAML
+# --- Валідація конфігураційного файлу YAML ---
+# Перевіряє синтаксис YAML через python або grep
 validate_yaml_file() {
     local file="$1"
     if command -v python3 &> /dev/null; then
@@ -141,7 +153,8 @@ validate_yaml_file() {
     fi
 }
 
-# Отримання системної інформації
+# --- Отримання системної інформації ---
+# Виводить коротку інформацію про систему
 get_system_info() {
     echo "=== Інформація про систему ==="
     echo "ОС: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)"
@@ -153,7 +166,8 @@ get_system_info() {
     echo "Docker Compose версія: $(docker compose version 2>/dev/null | head -1 || echo 'Не встановлено')"
 }
 
-# Перевірка мережевого з'єднання
+# --- Перевірка мережевого з'єднання ---
+# Пінгує кілька хостів, повертає 0 якщо хоч один доступний
 check_network_connectivity() {
     local hosts=("8.8.8.8" "1.1.1.1" "matrix.org")
     local success_count=0

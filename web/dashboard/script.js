@@ -23,11 +23,13 @@ themeToggle.addEventListener('click', () => {
 });
 
 // --- Функція для показу/приховування помилки API ---
+// Показує або ховає повідомлення про помилку API
 function showApiError(show) {
   document.getElementById('api-error').classList.toggle('hidden', !show);
 }
 
 // --- Завантаження статусу системи ---
+// Оновлює статус системи через API
 async function loadStatus() {
   try {
     const res = await fetch('/api/status');
@@ -42,6 +44,7 @@ async function loadStatus() {
 }
 
 // --- Завантаження сервісів ---
+// Оновлює список сервісів через API
 async function loadServices() {
   try {
     const res = await fetch('/api/services');
@@ -64,6 +67,7 @@ async function loadServices() {
 }
 
 // --- Дії над сервісами ---
+// Запускає/зупиняє/перезапускає сервіс через API
 window.serviceAction = async (name, action) => {
   try {
     const res = await fetch(`/api/services/${name}/${action}`, {method: 'POST'});
@@ -75,6 +79,7 @@ window.serviceAction = async (name, action) => {
 };
 
 // --- Завантаження користувачів ---
+// Оновлює список користувачів через API
 async function loadUsers() {
   try {
     const res = await fetch('/api/users');
@@ -116,6 +121,7 @@ document.getElementById('user-create-form').addEventListener('submit', async (e)
 });
 
 // --- Видалення користувача ---
+// Видаляє користувача через API
 window.deleteUser = async (username) => {
   if (!confirm(`Видалити користувача ${username}?`)) return;
   try {
@@ -128,6 +134,7 @@ window.deleteUser = async (username) => {
 };
 
 // --- Завантаження резервних копій ---
+// Оновлює список бекапів через API
 async function loadBackups() {
   try {
     const res = await fetch('/api/backup');
@@ -147,6 +154,7 @@ async function loadBackups() {
 }
 
 // --- Створення резервної копії ---
+// Створює новий бекап через API
 document.getElementById('backup-create').addEventListener('click', async () => {
   try {
     const res = await fetch('/api/backup', {method: 'POST'});
@@ -158,6 +166,7 @@ document.getElementById('backup-create').addEventListener('click', async () => {
 });
 
 // --- Ініціалізація ---
+// Запускає всі основні завантаження при старті сторінки
 function init() {
   loadStatus();
   loadServices();
